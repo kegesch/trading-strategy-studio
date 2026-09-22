@@ -1,0 +1,66 @@
+@import "tailwindcss";
+
+html,
+body {
+  height: 100%;
+  margin: 0;
+  overflow: hidden;
+  background: #0b101a;
+  color: #cbd5e1;
+  font-family: ui-sans-serif, system-ui, "Segoe UI", sans-serif;
+}
+
+#root {
+  height: 100%;
+}
+
+.panel-header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  height: 40px;
+  padding: 0 12px;
+  background: #0f1520;
+  border-bottom: 1px solid #232d3d;
+}
+
+.panel-title {
+  font-size: 12px;
+  font-weight: 600;
+  letter-spacing: 0.08em;
+  text-transform: uppercase;
+  color: #64748b;
+}
+
+.panel-body {
+  position: relative;
+  overflow: hidden;
+  display: flex;
+  flex-direction: column;
+}
+
+.placeholder {
+  flex: 1;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  text-align: center;
+  color: #475569;
+  font-size: 14px;
+  line-height: 1.8;
+  padding: 24px;
+}
+
+.scroll-region {
+  overflow-y: auto;
+  scrollbar-color: #2b3548 #0f1520;
+}
+
+.scroll-region::-webkit-scrollbar {
+  width: 8px;
+}
+
+.scroll-region::-webkit-scrollbar-thumb {
+  background: #2b3548;
+  border-radius: 4px;
+}
