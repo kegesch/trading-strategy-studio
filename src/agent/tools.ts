@@ -7,6 +7,7 @@ import {
   getScriptInputs,
   getScriptInputValues,
   getStudio,
+  setBacktest,
 } from '../studio/store'
 
 /** Tool schemas exposed to the model. */
@@ -136,6 +137,8 @@ async function runBacktestTool(args: Record<string, unknown>): Promise<unknown> 
   if (!source) return { error: 'No script available' }
 
   const { strategy, runMs } = await runBacktest({ ticker, timeframe: tf, limit, script: source })
+  // Share the raw run with the UI so the Backtest pane shows agent results too.
+  setBacktest({ strategy, runMs }, 'agent')
   if (!strategy) {
     return {
       ticker,

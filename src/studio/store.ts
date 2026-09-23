@@ -1,13 +1,26 @@
 import { useSyncExternalStore } from 'react'
 import type { VelaWorkspace } from '@luxalgo/vela/workspace'
 
+import type { BacktestResult } from '../backtest/runBacktest'
+
+export type BacktestSource = 'user' | 'agent'
+
 export interface StudioState {
   ws: VelaWorkspace | null
   symbol: string
   timeframe: string
+  /** Last backtest run, shared between the agent and the backtest pane. */
+  backtest: BacktestResult | null
+  backtestSource: BacktestSource | null
 }
 
-let state: StudioState = { ws: null, symbol: 'BTC-USDT', timeframe: '60' }
+let state: StudioState = {
+  ws: null,
+  symbol: 'BTC-USDT',
+  timeframe: '60',
+  backtest: null,
+  backtestSource: null,
+}
 const listeners = new Set<() => void>()
 
 export function getStudio(): StudioState {
@@ -28,6 +41,11 @@ function subscribe(l: () => void) {
 
 export function useStudio(): StudioState {
   return useSyncExternalStore(subscribe, getStudio)
+}
+
+/** Publish a backtest result so the pane shows it regardless of who ran it. */
+export function setBacktest(result: BacktestResult, source: BacktestSource) {
+  setStudio({ backtest: result, backtestSource: source })
 }
 
 /**

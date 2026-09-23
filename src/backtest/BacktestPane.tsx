@@ -1,7 +1,7 @@
 import { useMemo, useState } from 'react'
 
 import { runBacktest, type BacktestResult } from '../backtest/runBacktest'
-import { useStudio } from '../studio/store'
+import { setBacktest, useStudio } from '../studio/store'
 
 const fmt = (v: number | undefined, digits = 2) =>
   v == null || Number.isNaN(v) ? '—' : v.toFixed(digits)
@@ -53,20 +53,20 @@ function EquityCurve({ result }: { result: BacktestResult }) {
 }
 
 export default function BacktestPane({ script }: { script: string }) {
-  const { symbol, timeframe } = useStudio()
+  const { symbol, timeframe, backtest: result, backtestSource } = useStudio()
   const [bars, setBars] = useState(1000)
   const [running, setRunning] = useState(false)
   const [error, setError] = useState<string | null>(null)
-  const [result, setResult] = useState<BacktestResult | null>(null)
 
   const run = async () => {
     setRunning(true)
     setError(null)
     try {
-      setResult(await runBacktest({ ticker: symbol, timeframe, limit: bars, script }))
+      const result = await runBacktest({ ticker: symbol, timeframe, limit: bars, script })
+      setBacktest(result, 'user')
     } catch (e) {
       setError(e instanceof Error ? e.message : String(e))
-      setResult(null)
+      setBacktest({ strategy: null, runMs: 0 }, 'user')
     } finally {
       setRunning(false)
     }
@@ -110,6 +110,11 @@ export default function BacktestPane({ script }: { script: string }) {
         <>
           <p className="mt-2 text-[10px] text-slate-600">
             {symbol} · {timeframe} · {result.runMs.toFixed(0)}ms
+            {backtestSource === 'agent' && (
+              <span className="ml-2 rounded bg-sky-950 px-1.5 py-0.5 text-[9px] uppercase tracking-wider text-sky-400">
+                from agent
+              </span>
+            )}
           </p>
           {s ? (
             <>

@@ -97,12 +97,27 @@ function ToolChip({ item }: { item: Item }) {
   )
 }
 
+function ThinkingIndicator({ label }: { label: string }) {
+  return (
+    <div className="flex items-center gap-2 rounded border border-[#232d3d] bg-[#0d1220] px-2 py-1.5 text-[11px] text-slate-400">
+      <span className="flex gap-0.5">
+        <span className="thinking-dot h-1.5 w-1.5 rounded-full bg-sky-400" />
+        <span className="thinking-dot h-1.5 w-1.5 rounded-full bg-sky-400" />
+        <span className="thinking-dot h-1.5 w-1.5 rounded-full bg-sky-400" />
+      </span>
+      <span>{label}</span>
+      <span className="thinking-bar h-0.5 flex-1 rounded bg-[#1a2332]" />
+    </div>
+  )
+}
+
 export default function ChatPane() {
   const persisted = useRef<PersistedChat | null>(null)
   if (persisted.current === null) persisted.current = loadPersisted()
   const [items, setItems] = useState<Item[]>(persisted.current.items)
   const [input, setInput] = useState('')
   const [streaming, setStreaming] = useState(false)
+  const [status, setStatus] = useState<string | null>(null)
   const [error, setError] = useState<string | null>(null)
   const historyRef = useRef<ChatMessage[]>(persisted.current.history)
   const abortRef = useRef<AbortController | null>(null)
@@ -145,6 +160,7 @@ export default function ChatPane() {
       for (let step = 0; step < 8; step += 1) {
         const assistantId = nextId++
         setItems((prev) => [...prev, { id: assistantId, kind: 'assistant', text: '' }])
+        setStatus('Thinking…')
 
         const { content, toolCalls } = await streamChat({
           messages: historyRef.current,
@@ -181,6 +197,7 @@ export default function ChatPane() {
           })
           let result: unknown
           try {
+            setStatus(`Running ${call.name}…`)
             result = await executeTool(call.name, call.arguments)
           } catch (e) {
             result = { error: e instanceof Error ? e.message : String(e) }
@@ -200,6 +217,7 @@ export default function ChatPane() {
       }
     } finally {
       setStreaming(false)
+      setStatus(null)
       abortRef.current = null
     }
   }
@@ -233,6 +251,7 @@ export default function ChatPane() {
             if (!it.text) return null
             return <AssistantContent key={it.id} text={it.text} />
           })}
+          {streaming && <ThinkingIndicator label={status ?? 'Thinking…'} />}
         </div>
         {error && (
           <p className="mt-2 rounded border border-rose-900 bg-rose-950/40 p-2 text-[11px] text-rose-300">
