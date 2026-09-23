@@ -21,12 +21,19 @@ const beforeMount: BeforeMount = (monacoInstance) => {
 interface Props {
   value: string
   onChange: (value: string) => void
+  onSave?: () => void
 }
 
-export default function EditorPane({ value, onChange }: Props) {
+export default function EditorPane({ value, onChange, onSave }: Props) {
   const language = detectLanguage(value)
 
-  const onMount: OnMount = (editor) => {
+  const onMount: OnMount = (editor, monacoInstance) => {
+    if (onSave) {
+      editor.addCommand(
+        monacoInstance.KeyMod.CtrlCmd | monacoInstance.KeyCode.KeyS,
+        () => onSave(),
+      )
+    }
     editor.focus()
   }
 

@@ -34,6 +34,7 @@ export default function ChartPane() {
       persist: false,
     })
     wsRef.current = ws
+    setStudio({ ws })
 
     const publishMarket = () => {
       const market = ws.active.chart.market

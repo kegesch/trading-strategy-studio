@@ -58,9 +58,9 @@ export default function App() {
   const { symbol, timeframe } = useStudio()
   const [chartMsg, setChartMsg] = useState<string | null>(null)
 
-  const addToChart = () => {
+  const applyToChart = () => {
     const err = runScriptOnChart(script)
-    setChartMsg(err ?? 'Added to chart')
+    setChartMsg(err ?? 'Applied to chart')
     if (err) window.setTimeout(() => setChartMsg(null), 4000)
   }
 
@@ -112,15 +112,15 @@ export default function App() {
               <>
                 {chartMsg && <span className="text-[10px] text-slate-500">{chartMsg}</span>}
                 <button
-                  onClick={addToChart}
+                  onClick={applyToChart}
                   className="rounded bg-emerald-600 px-2 py-0.5 text-[11px] font-medium text-white hover:bg-emerald-500"
                 >
-                  Add to chart
+                  Save · apply to chart
                 </button>
               </>
             }
           >
-            <EditorPane value={script} onChange={setScript} />
+            <EditorPane value={script} onChange={setScript} onSave={applyToChart} />
           </Pane>
         </div>
         <Resizer ariaLabel="Resize script pane" onResize={resizeMid} />
