@@ -3,6 +3,7 @@
 import Resizer from './Resizer'
 import ChartPane from './vela/ChartPane'
 import EditorPane from './editor/EditorPane'
+import InputControls from './editor/InputControls'
 import BacktestPane from './backtest/BacktestPane'
 import ChatPane from './chat/ChatPane'
 import { SAMPLE_PINE_STRATEGY } from './editor/sample-script'
@@ -42,10 +43,12 @@ export default function App() {
   const scriptRef = useRef(script)
   const { symbol, timeframe } = useStudio()
   const [chartMsg, setChartMsg] = useState<string | null>(null)
+  const [applyVersion, setApplyVersion] = useState(0)
 
   const applyToChart = () => {
     const err = runScriptOnChart(scriptRef.current)
     setChartMsg(err ?? 'Applied to chart')
+    if (!err) setApplyVersion((v) => v + 1)
     if (err) window.setTimeout(() => setChartMsg(null), 4000)
   }
 
@@ -114,6 +117,7 @@ export default function App() {
               </>
             }
           >
+            <InputControls version={applyVersion} />
             <EditorPane
               value={script}
               onChange={(v) => {

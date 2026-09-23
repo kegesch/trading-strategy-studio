@@ -70,3 +70,47 @@ export function setEditorBridge(bridge: EditorBridge | null) {
 export function getEditorBridge(): EditorBridge | null {
   return editorBridge
 }
+
+/** Schema of the studio script's inputs on the chart (empty when not applied). */
+export function getScriptInputs(): { key: string; title: string; type: string; defval: unknown; min?: number; max?: number; step?: number; options?: readonly string[] }[] {
+  const { ws } = getStudio()
+  if (!ws) return []
+  try {
+    const handle = ws.active.chart.indicators().find((h) => h.id === SCRIPT_INDICATOR_ID)
+    if (!handle) return []
+    return handle.inputs.map((i) => ({
+      key: i.key,
+      title: i.title,
+      type: i.type,
+      defval: i.defval,
+      min: i.min,
+      max: i.max,
+      step: i.step,
+      options: i.options,
+    }))
+  } catch {
+    return []
+  }
+}
+
+export function getScriptInputValues(): Record<string, unknown> {
+  const { ws } = getStudio()
+  if (!ws) return {}
+  try {
+    const handle = ws.active.chart.indicators().find((h) => h.id === SCRIPT_INDICATOR_ID)
+    return handle ? handle.inputValues() : {}
+  } catch {
+    return {}
+  }
+}
+
+export function setScriptInput(key: string, value: unknown) {
+  const { ws } = getStudio()
+  if (!ws) return
+  try {
+    const handle = ws.active.chart.indicators().find((h) => h.id === SCRIPT_INDICATOR_ID)
+    handle?.setInput(key, value as never)
+  } catch {
+    // chart gone mid-edit
+  }
+}
