@@ -1,8 +1,10 @@
+import { useRef } from 'react'
 import Editor, { loader, type OnMount, type BeforeMount } from '@monaco-editor/react'
 import * as monaco from 'monaco-editor'
 
 import { pineLanguage } from './pine-language'
 import { detectLanguage } from './detect-language'
+import { checkScript } from './diagnostics'
 
 // Bundle monaco locally instead of the @monaco-editor/react CDN default.
 loader.config({ monaco })
@@ -22,8 +24,11 @@ interface Props {
 
 export default function EditorPane({ value, onChange, onSave }: Props) {
   const language = detectLanguage(value)
+  const editorRef = useRef<monaco.editor.IStandaloneCodeEditor | null>(null)
+  const debounceRef = useRef<ReturnType<typeof setTimeout> | undefined>(undefined)
 
   const onMount: OnMount = (editor, monacoInstance) => {
+    editorRef.current = editor
     if (onSave) {
       editor.addCommand(
         monacoInstance.KeyMod.CtrlCmd | monacoInstance.KeyCode.KeyS,
@@ -31,6 +36,29 @@ export default function EditorPane({ value, onChange, onSave }: Props) {
       )
     }
     editor.focus()
+  }
+
+  const updateDiagnostics = (source: string) => {
+    clearTimeout(debounceRef.current)
+    debounceRef.current = setTimeout(() => {
+      const editor = editorRef.current
+      if (!editor) return
+      const model = editor.getModel()
+      if (!model || model.getValue() !== source) return
+      monaco.editor.setModelMarkers(
+        model,
+        'pinets',
+        checkScript(source).map((d) => ({
+          startLineNumber: d.line,
+          endLineNumber: d.line,
+          startColumn: d.column,
+          endColumn: d.column + 1,
+          message: d.message,
+          severity: monaco.MarkerSeverity.Error,
+          source: 'pinets',
+        })),
+      )
+    }, 500)
   }
 
   return (
@@ -41,7 +69,11 @@ export default function EditorPane({ value, onChange, onSave }: Props) {
       value={value}
       beforeMount={beforeMount}
       onMount={onMount}
-      onChange={(v) => onChange(v ?? '')}
+      onChange={(v) => {
+        const source = v ?? ''
+        onChange(source)
+        updateDiagnostics(source)
+      }}
       options={{
         minimap: { enabled: false },
         fontSize: 12,

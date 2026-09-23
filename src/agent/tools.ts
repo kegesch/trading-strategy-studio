@@ -9,6 +9,7 @@ import {
   getStudio,
   setBacktest,
 } from '../studio/store'
+import { checkScript } from '../editor/diagnostics'
 
 /** Tool schemas exposed to the model. */
 export const AGENT_TOOLS: ToolDef[] = [
@@ -40,24 +41,36 @@ export const AGENT_TOOLS: ToolDef[] = [
   {
     type: 'function',
     function: {
-      name: 'get_script',
-      description: 'Read the current Pine Script in the editor.',
-      parameters: { type: 'object', properties: {} },
+      name: 'read_script',
+      description:
+        'Read the current Pine Script from the editor with line numbers. Omit startLine to read the whole script.',
+      parameters: {
+        type: 'object',
+        properties: {
+          startLine: { type: 'number', description: '1-based first line to read (default 1)' },
+          endLine: { type: 'number', description: '1-based last line to read (default: last line)' },
+        },
+      },
     },
   },
   {
     type: 'function',
     function: {
-      name: 'set_script',
+      name: 'edit_script',
       description:
-        'Replace the editor Pine Script. Set apply=true to also run it on the chart immediately.',
+        'Edit the editor Pine Script. Applies to the chart by default. Two modes:\n' +
+        '1. LINE RANGE (preferred): replace lines startLine..endLine (1-based, from read_script) with newString. To insert, use endLine = startLine - 1 with empty-or-new content.',
       parameters: {
         type: 'object',
         properties: {
-          source: { type: 'string', description: 'Full Pine Script source' },
+          startLine: { type: 'number', description: 'First line of the range to replace (mode 1)' },
+          endLine: { type: 'number', description: 'Last line of the range to replace (mode 1); default = startLine' },
+          oldString: { type: 'string', description: 'Exact existing text to replace (mode 2; must be unique unless replaceAll)' },
+          newString: { type: 'string', description: 'Replacement text; empty string to delete/insert nothing' },
+          replaceAll: { type: 'boolean', description: 'Mode 2 only: replace every occurrence (default false)' },
           apply: { type: 'boolean', description: 'Run it on the chart now (default true)' },
         },
-        required: ['source'],
+        required: ['newString'],
       },
     },
   },
@@ -210,17 +223,89 @@ export async function executeTool(name: string, argsJson: string): Promise<unkno
     }
     case 'get_market_data':
       return getMarketData(args)
-    case 'get_script':
-      return { source: getEditorBridge()?.getScript() ?? '' }
-    case 'set_script': {
-      const source = String(args.source ?? '')
-      if (!source) return { error: 'source is required' }
-      const apply = args.apply !== false
+    case 'read_script': {
+      const source = getEditorBridge()?.getScript() ?? ''
+      const lines = source.split('\n')
+      const start = Math.max(Math.trunc(Number(args.startLine) || 1), 1)
+      const end = Math.min(Math.trunc(Number(args.endLine) || lines.length), lines.length)
+      if (start > end) return { error: `Invalid range: ${start}-${end} (script has ${lines.length} lines)` }
+      return {
+        totalLines: lines.length,
+        startLine: start,
+        endLine: end,
+        content: lines
+          .slice(start - 1, end)
+          .map((line, i) => `${start + i}: ${line}`)
+          .join('\n'),
+      }
+    }
+    case 'edit_script': {
       const bridge = getEditorBridge()
       if (!bridge) return { error: 'Editor not ready' }
-      if (apply) bridge.replaceScript(source)
-      else bridge.setScript(source)
-      return { ok: true, applied: apply, chars: source.length }
+      const newString = String(args.newString ?? '')
+      const source = bridge.getScript()
+      const lines = source.split('\n')
+      let updated: string
+      let replacements: number
+
+      if (args.startLine !== undefined) {
+        const start = Math.trunc(Number(args.startLine))
+        const end = args.endLine !== undefined ? Math.trunc(Number(args.endLine)) : start
+        if (!Number.isFinite(start) || start < 1 || end < start - 1) {
+          return { error: `Invalid range: ${args.startLine}-${args.endLine ?? '?'}` }
+        }
+        if (start > lines.length + 1) {
+          return { error: `startLine ${start} is past the end of the script (${lines.length} lines)` }
+        }
+        if (end > lines.length) {
+          return { error: `endLine ${end} is past the end of the script (${lines.length} lines)` }
+        }
+        if (end < start) {
+          // Insertion: newString goes before line `start`.
+          lines.splice(start - 1, 0, ...newString.split('\n'))
+        } else {
+          lines.splice(start - 1, end - start + 1, ...newString.split('\n'))
+        }
+        updated = lines.join('\n')
+        replacements = Math.max(end - start + 1, 0)
+      } else {
+        const oldString = String(args.oldString ?? '')
+        if (!oldString) return { error: 'Provide startLine/endLine (line mode) or oldString (string mode)' }
+        const occurrences = source.split(oldString).length - 1
+        if (occurrences === 0) {
+          return { error: 'oldString not found in script — use read_script and try a line range instead' }
+        }
+        if (occurrences > 1 && args.replaceAll !== true) {
+          return {
+            error: `oldString found ${occurrences} times — provide more surrounding context to make it unique, or set replaceAll=true`,
+          }
+        }
+        updated =
+          occurrences > 1
+            ? source.split(oldString).join(newString)
+            : source.replace(oldString, newString)
+        replacements = occurrences
+      }
+
+      const diagnostics = checkScript(updated)
+      // Show the edit in the editor regardless, so markers point at the problem.
+      bridge.setScript(updated)
+      if (diagnostics.length > 0) {
+        return {
+          ok: false,
+          applied: false,
+          diagnostics,
+          note: 'Edit not applied to the chart — fix the syntax errors and edit again.',
+        }
+      }
+      const apply = args.apply !== false
+      if (apply) bridge.replaceScript(updated)
+      return {
+        ok: true,
+        applied: apply,
+        replacements,
+        totalLines: updated.split('\n').length,
+      }
     }
     case 'run_backtest':
       return runBacktestTool(args)

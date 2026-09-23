@@ -66,7 +66,7 @@ without them.
    symbol/timeframe and reports metrics, an equity curve and the trades table.
 5. **Chat pane** drives an agent with these tools:
    - `get_chart_state`, `get_market_data` — read the chart / OKX candles
-   - `get_script`, `set_script` — read/write the editor (applies to chart by default)
+    - `read_script`, `edit_script` — line-numbered read / line-range or exact-string edit of the editor (edits are syntax-checked; clean ones apply to chart by default)
    - `run_backtest` — run a strategy and return metrics + trades
 
    Ask e.g. *"Build a volatility breakout strategy on the current chart and backtest
