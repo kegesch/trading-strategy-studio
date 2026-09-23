@@ -50,7 +50,10 @@ export default function ChartPane() {
     const publishMarket = () => {
       const market = chart.market
       if (market.symbol) {
-        setStudio({ symbol: market.symbol, timeframe: market.timeframe ?? '60' })
+        const bare = market.symbol.includes(':')
+          ? (market.symbol.split(':').pop() as string)
+          : market.symbol
+        setStudio({ symbol: bare, timeframe: market.timeframe ?? '60' })
       }
     }
     publishMarket()

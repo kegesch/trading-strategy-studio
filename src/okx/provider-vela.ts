@@ -40,7 +40,9 @@ const SUPPORTED_TIMEFRAMES = [
 ] as const
 
 export function toOkxInstId(ticker: string): string {
-  let t = ticker.trim().toUpperCase()
+  // Strip a venue prefix (`OKX:BTC-USDT`) and any chart-type modifier
+  // (`BTC-USDT;heikinashi`) — the venue API only knows the bare instId.
+  let t = (ticker.split(':').pop() ?? ticker).split(';')[0].trim().toUpperCase()
   const isPerp = t.endsWith('.P')
   if (isPerp) {
     t = t.slice(0, t.length - 2)

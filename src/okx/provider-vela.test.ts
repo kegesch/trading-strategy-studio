@@ -18,4 +18,12 @@ describe('toOkxInstId', () => {
     expect(toOkxInstId('BTC-USDT.P')).toBe('BTC-USDT-SWAP')
     expect(toOkxInstId('BTCUSDT.P')).toBe('BTC-USDT-SWAP')
   })
+
+  it('strips venue prefixes and chart-type modifiers', () => {
+    expect(toOkxInstId('OKX:BTC-USDT')).toBe('BTC-USDT')
+    expect(toOkxInstId('okx:btcusdt')).toBe('BTC-USDT')
+    expect(toOkxInstId('OKX:BTC-USDT.P')).toBe('BTC-USDT-SWAP')
+    expect(toOkxInstId('BTC-USDT;heikinashi')).toBe('BTC-USDT')
+    expect(toOkxInstId('OKX:BTCUSDT;heikinashi')).toBe('BTC-USDT')
+  })
 })
