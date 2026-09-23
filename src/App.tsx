@@ -1,11 +1,12 @@
-import { useRef, useState } from 'react'
+﻿import { useRef, useState } from 'react'
 
 import Resizer from './Resizer'
 import ChartPane from './vela/ChartPane'
 import EditorPane from './editor/EditorPane'
 import BacktestPane from './backtest/BacktestPane'
+import ChatPane from './chat/ChatPane'
 import { SAMPLE_PINE_STRATEGY } from './editor/sample-script'
-import { runScriptOnChart, useStudio } from './studio/store'
+import { runScriptOnChart, useStudio, setEditorBridge } from './studio/store'
 
 const clamp = (v: number, min: number, max: number) =>
   Math.max(min, Math.min(max, v))
@@ -35,23 +36,6 @@ function Pane({
   )
 }
 
-function Placeholder({
-  title,
-  subtitle,
-}: {
-  title: string
-  subtitle: string
-}) {
-  return (
-    <div className="placeholder">
-      <div>
-        <p className="font-semibold text-slate-500">{title}</p>
-        <p className="mt-1">{subtitle}</p>
-      </div>
-    </div>
-  )
-}
-
 export default function App() {
   const [sizes, setSizes] = useState({ left: 0.4, mid: 0.3 })
   const [script, setScript] = useState(SAMPLE_PINE_STRATEGY)
@@ -64,6 +48,15 @@ export default function App() {
     setChartMsg(err ?? 'Applied to chart')
     if (err) window.setTimeout(() => setChartMsg(null), 4000)
   }
+
+  setEditorBridge({
+    getScript: () => scriptRef.current,
+    replaceScript: (source) => {
+      setScript(source)
+      scriptRef.current = source
+      applyToChart()
+    },
+  })
 
   const resizeLeft = (delta: number) => {
     setSizes((s) => {
@@ -88,7 +81,7 @@ export default function App() {
           TRADING BOT STUDIO
         </span>
         <span className="ml-auto text-[11px] text-slate-600">
-          3-pane layout — drag dividers to resize
+          3-pane layout â€” drag dividers to resize
         </span>
       </header>
       <main className="flex flex-1 min-h-0">
@@ -97,7 +90,7 @@ export default function App() {
           style={{ width: `${sizes.left * 100}%` }}
         >
           <Pane
-            title={`Vela chart — ${symbol} · ${timeframe}`}
+            title={`Vela chart â€” ${symbol} Â· ${timeframe}`}
           >
             <ChartPane />
           </Pane>
@@ -116,7 +109,7 @@ export default function App() {
                   onClick={applyToChart}
                   className="rounded bg-emerald-600 px-2 py-0.5 text-[11px] font-medium text-white hover:bg-emerald-500"
                 >
-                  Save · apply to chart
+                  Save Â· apply to chart
                 </button>
               </>
             }
@@ -134,10 +127,7 @@ export default function App() {
         <Resizer ariaLabel="Resize script pane" onResize={resizeMid} />
         <div className="flex flex-col min-w-0 flex-1">
           <Pane title="LLM chat">
-            <Placeholder
-              title="Chat pane"
-              subtitle="OpenAI-compatible streaming chat (task 12)"
-            />
+            <ChatPane />
           </Pane>
           <Pane title="Backtest">
             <BacktestPane script={script} />
