@@ -3,6 +3,7 @@ import { useState } from 'react'
 import Resizer from './Resizer'
 import ChartPane from './vela/ChartPane'
 import EditorPane from './editor/EditorPane'
+import BacktestPane from './backtest/BacktestPane'
 import { SAMPLE_PINE_STRATEGY } from './editor/sample-script'
 
 const clamp = (v: number, min: number, max: number) =>
@@ -104,10 +105,7 @@ export default function App() {
             />
           </Pane>
           <Pane title="Backtest">
-            <Placeholder
-              title="Backtest pane"
-              subtitle="Metrics, trades & equity curve (tasks 9–10)"
-            />
+            <BacktestPane script={script} ticker="BTC-USDT" timeframe="60" />
           </Pane>
         </div>
       </main>

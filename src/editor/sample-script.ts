@@ -7,12 +7,9 @@ slowLen = input.int(21, "Slow Length")
 fast = ta.ema(close, fastLen)
 slow = ta.ema(close, slowLen)
 
-longCondition = ta.crossover(fast, slow)
-shortCondition = ta.crossunder(fast, slow)
-
-if longCondition
+if ta.crossover(fast, slow)
     strategy.entry("Long", strategy.long)
-if shortCondition
+if ta.crossunder(fast, slow)
     strategy.close("Long")
 
 plot(fast, "Fast EMA", color=color.orange)
