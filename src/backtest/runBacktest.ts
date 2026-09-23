@@ -1,4 +1,5 @@
 import { PineTS, Context } from 'pinets'
+import type { IProvider } from 'pinets'
 
 import { OkxPinetsProvider } from '../okx/provider-pinets'
 
@@ -10,6 +11,8 @@ export interface BacktestParams {
   timeframe: string
   limit: number
   script: string
+  /** Data source; defaults to the OKX provider (tests inject a fixture). */
+  provider?: IProvider
 }
 
 export interface BacktestResult {
@@ -17,7 +20,7 @@ export interface BacktestResult {
   runMs: number
 }
 
-const provider = new OkxPinetsProvider()
+const defaultProvider = new OkxPinetsProvider()
 
 /**
  * pinets 0.9.x bug: an `initial_capital=` declaration arg (or prop) makes the
@@ -35,7 +38,7 @@ function workaroundInitialCapital(script: string): string {
 export async function runBacktest(params: BacktestParams): Promise<BacktestResult> {
   const started = performance.now()
   const pine = new PineTS(
-    provider,
+    params.provider ?? defaultProvider,
     params.ticker,
     params.timeframe,
     params.limit,

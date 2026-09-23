@@ -2,14 +2,10 @@ import Editor, { loader, type OnMount, type BeforeMount } from '@monaco-editor/r
 import * as monaco from 'monaco-editor'
 
 import { pineLanguage } from './pine-language'
+import { detectLanguage } from './detect-language'
 
 // Bundle monaco locally instead of the @monaco-editor/react CDN default.
 loader.config({ monaco })
-
-/** Detect PineScript via its `//@version=` pragma; anything else is TS. */
-export function detectLanguage(source: string): 'pine' | 'typescript' {
-  return /\/\/\s*@version\s*=/.test(source) ? 'pine' : 'typescript'
-}
 
 const beforeMount: BeforeMount = (monacoInstance) => {
   if (!monacoInstance.languages.getLanguages().some((l: { id: string }) => l.id === 'pine')) {
