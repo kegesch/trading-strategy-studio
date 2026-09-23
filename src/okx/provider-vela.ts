@@ -39,7 +39,7 @@ const SUPPORTED_TIMEFRAMES = [
   '1M',
 ] as const
 
-function toOkxInstId(ticker: string): string {
+export function toOkxInstId(ticker: string): string {
   let t = ticker.trim().toUpperCase()
   const isPerp = t.endsWith('.P')
   if (isPerp) {
@@ -77,7 +77,7 @@ function dedupeAscending(bars: Bar[]): Bar[] {
  * Fetch up to `count` bars with open-time <= `to`, walking backward from `to`.
  * Returns ascending, de-duplicated.
  */
-async function fetchRecentBackward(
+export async function fetchRecentBackward(
   instId: string,
   tf: string,
   count: number,
@@ -123,7 +123,7 @@ async function fetchRecentBackward(
  * Fetch bars in [from, to], walking backward from `to` until we cross `from`.
  * Returns ascending, de-duplicated.
  */
-async function fetchRangeForward(
+export async function fetchRangeForward(
   instId: string,
   tf: string,
   from: number,
