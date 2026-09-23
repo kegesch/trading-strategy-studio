@@ -10,6 +10,9 @@
     "preview": "vite preview"
   },
   "dependencies": {
+    "@luxalgo/vela-pinets": "0.2.13",
+    "@monaco-editor/react": "4.7.0",
+    "monaco-editor": "0.56.0",
     "pinets": "0.9.34",
     "react": "^19.2.8",
     "react-dom": "^19.2.8"

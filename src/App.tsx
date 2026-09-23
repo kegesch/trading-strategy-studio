@@ -1,6 +1,7 @@
 import { useState } from 'react'
 
 import Resizer from './Resizer'
+import ChartPane from './vela/ChartPane'
 
 const clamp = (v: number, min: number, max: number) =>
   Math.max(min, Math.min(max, v))
@@ -79,10 +80,7 @@ export default function App() {
           style={{ width: `${sizes.left * 100}%` }}
         >
           <Pane title="Vela chart">
-            <Placeholder
-              title="Chart pane"
-              subtitle="Vela single chart — OKX candles + Pine engine overlay (task 6)"
-            />
+            <ChartPane />
           </Pane>
         </div>
         <Resizer ariaLabel="Resize chart pane" onResize={resizeLeft} />
