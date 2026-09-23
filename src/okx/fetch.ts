@@ -16,6 +16,9 @@ export interface Instrument {
   settleCcy?: string;
   state?: string;
   instIdCode?: number;
+  tickSz?: string;
+  minSz?: string;
+  maxLmtSz?: string;
 }
 
 export const DEFAULT_OKX_BASE = 'https://www.okx.com/api/v5';
@@ -28,11 +31,11 @@ const MAX_BAR_LIMIT = 300;
 const MAX_INST_LIMIT = 200;
 
 const TF_TO_OKX_BAR: Record<string, string> = {
-  '1': '1',
-  '3': '3',
-  '5': '5',
-  '15': '15',
-  '30': '30',
+  '1': '1m',
+  '3': '3m',
+  '5': '5m',
+  '15': '15m',
+  '30': '30m',
   '60': '1H',
   '120': '2H',
   '180': '3H',
@@ -216,16 +219,19 @@ export async function fetchInstruments(
     params,
     baseUrl,
   );
-  return data.map((i) => ({
-    instId: i.instId,
-    instType: i.instType,
-    instFamily: i.instFamily,
-    baseCcy: i.baseCcy,
-    quoteCcy: i.quoteCcy,
-    settleCcy: i.settleCcy,
-    state: i.state,
-    instIdCode: i.instIdCode,
-  }));
+    return data.map((i) => ({
+      instId: i.instId,
+      instType: i.instType,
+      instFamily: i.instFamily,
+      baseCcy: i.baseCcy,
+      quoteCcy: i.quoteCcy,
+      settleCcy: i.settleCcy,
+      state: i.state,
+      instIdCode: i.instIdCode,
+      tickSz: i.tickSz as string | undefined,
+      minSz: i.minSz as string | undefined,
+      maxLmtSz: i.maxLmtSz as string | undefined,
+    }));
 }
 
 export async function fetchSymbols(
