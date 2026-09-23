@@ -1,4 +1,4 @@
-import { useState } from 'react'
+import { useRef, useState } from 'react'
 
 import Resizer from './Resizer'
 import ChartPane from './vela/ChartPane'
@@ -55,11 +55,12 @@ function Placeholder({
 export default function App() {
   const [sizes, setSizes] = useState({ left: 0.4, mid: 0.3 })
   const [script, setScript] = useState(SAMPLE_PINE_STRATEGY)
+  const scriptRef = useRef(script)
   const { symbol, timeframe } = useStudio()
   const [chartMsg, setChartMsg] = useState<string | null>(null)
 
   const applyToChart = () => {
-    const err = runScriptOnChart(script)
+    const err = runScriptOnChart(scriptRef.current)
     setChartMsg(err ?? 'Applied to chart')
     if (err) window.setTimeout(() => setChartMsg(null), 4000)
   }
@@ -120,7 +121,14 @@ export default function App() {
               </>
             }
           >
-            <EditorPane value={script} onChange={setScript} onSave={applyToChart} />
+            <EditorPane
+              value={script}
+              onChange={(v) => {
+                setScript(v)
+                scriptRef.current = v
+              }}
+              onSave={applyToChart}
+            />
           </Pane>
         </div>
         <Resizer ariaLabel="Resize script pane" onResize={resizeMid} />
