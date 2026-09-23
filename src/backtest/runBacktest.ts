@@ -2,6 +2,8 @@ import { PineTS, Context } from 'pinets'
 import type { IProvider } from 'pinets'
 
 import { OkxPinetsProvider } from '../okx/provider-pinets'
+import { applyRealisticFills, okxDefaultFills } from './fills'
+import type { FillsConfig } from './fills'
 
 /** Full strategy report shape, as stored on a pinets run context. */
 export type StrategyReport = NonNullable<Context['strategy']>
@@ -13,6 +15,11 @@ export interface BacktestParams {
   script: string
   /** Data source; defaults to the OKX provider (tests inject a fixture). */
   provider?: IProvider
+  /**
+   * Fill-cost model (OKX taker fees + tick slippage by default). Pass
+   * `false` for the raw zero-cost engine behaviour (diagnostics/comparison).
+   */
+  fills?: FillsConfig | false
 }
 
 export interface BacktestResult {
@@ -43,7 +50,10 @@ export async function runBacktest(params: BacktestParams): Promise<BacktestResul
     params.timeframe,
     params.limit,
   )
-  const context = await pine.run(workaroundInitialCapital(params.script))
+  const script = workaroundInitialCapital(params.script)
+  const fills =
+    params.fills === false ? null : (params.fills ?? okxDefaultFills(params.ticker))
+  const context = await pine.run(fills ? applyRealisticFills(script, fills) : script)
   const strategy = context.strategy ?? null
   return { strategy, runMs: performance.now() - started }
 }

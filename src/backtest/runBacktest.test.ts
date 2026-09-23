@@ -129,4 +129,28 @@ plot(ta.sma(close, 10))
     expect(strategy).not.toBeNull()
     expect(strategy!.closedtrades.length).toBeGreaterThan(0)
   })
+
+  it('applies realistic fills: commissions reduce profit vs zero-cost run', async () => {
+    const base = {
+      ticker: 'TEST',
+      timeframe: '60',
+      limit: 600,
+      script: EMA_CROSS,
+      provider: fixtureProvider(),
+    }
+    const free = await runBacktest({ ...base, fills: false })
+    const costed = await runBacktest({ ...base })
+
+    expect(costed.strategy).not.toBeNull()
+    const freeProfit = free.strategy!.closedtrades.reduce((s, t) => s + (t.profit ?? 0), 0)
+    const costedProfit = costed.strategy!.closedtrades.reduce((s, t) => s + (t.profit ?? 0), 0)
+    expect(costedProfit).toBeLessThan(freeProfit)
+    for (const trade of costed.strategy!.closedtrades) {
+      expect(trade.commission).toBeGreaterThan(0)
+    }
+    // Buy fills slip up (pay the ask): long entry price is higher.
+    expect(costed.strategy!.closedtrades[0].entry_price).toBeGreaterThan(
+      free.strategy!.closedtrades[0].entry_price,
+    )
+  })
 })
