@@ -54,7 +54,7 @@ export default function App() {
     const err = runScriptOnChart(scriptRef.current)
     setChartMsg(err ?? 'Applied to chart')
     if (!err) setApplyVersion((v) => v + 1)
-    if (err) window.setTimeout(() => setChartMsg(null), 4000)
+    window.setTimeout(() => setChartMsg(null), err ? 4000 : 2000)
   }
 
   setEditorBridge({
