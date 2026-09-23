@@ -55,9 +55,12 @@ export function runScriptOnChart(script: string): string | null {
 
 export const SCRIPT_INDICATOR_ID = 'studio-script'
 
-/** Bridge so the chat pane can read/replace the editor's script. */
+/** Bridge so the chat/agent can read and write the editor's script. */
 export interface EditorBridge {
   getScript(): string
+  /** Update the editor only (no chart apply). */
+  setScript(source: string): void
+  /** Update the editor and run it on the chart. */
   replaceScript(source: string): void
 }
 

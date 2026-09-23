@@ -1,93 +1,180 @@
 import { useEffect, useRef, useState } from 'react'
 
-import { streamChat, isLlmConfigured, type ChatMessage } from '../llm/client'
+import {
+  streamChat,
+  isLlmConfigured,
+  type ChatMessage,
+} from '../llm/client'
+import { AGENT_TOOLS, executeTool } from '../agent/tools'
 import { getEditorBridge } from '../studio/store'
 
-const SYSTEM_PROMPT = `You are a Pine Script v5 expert helping build trading indicators and strategies for OKX crypto markets. Always return complete, runnable scripts in fenced code blocks (\`\`\`pine). Prefer strategy() scripts using strategy.entry/strategy.close for backtestability. Use input.int/input.float for parameters.`
+const SYSTEM_PROMPT = `You are the trading assistant inside Trading Bot Studio, a Pine Script workbench for OKX crypto markets.
 
-interface Msg extends ChatMessage {
+You have tools to inspect and change the workspace:
+- get_chart_state, get_market_data: read the chart and market data.
+- get_script, set_script: read and write the Pine Script editor (set_script applies it to the chart by default).
+- run_backtest: run the current (or a given) Pine strategy and get metrics back.
+
+Work autonomously: inspect the current script/state when useful, write complete Pine Script v5, apply it, and run a backtest to report concrete results (net profit, win rate, drawdown). Use strategy() with strategy.entry/strategy.close for backtestable scripts and input.int/input.float for parameters. Keep prose tight; put code in \`\`\`pine fences.`
+
+interface Item {
   id: number
+  kind: 'user' | 'assistant' | 'tool'
+  text: string
+  toolName?: string
+  toolArgs?: string
+  toolResult?: string
+  toolDone?: boolean
 }
 
 let nextId = 0
 
-/** Render assistant text: fenced code blocks get an Apply button, rest is plain. */
+function CodeBlock({ lang, code }: { lang: string; code: string }) {
+  return (
+    <div className="my-1.5 overflow-hidden rounded border border-[#232d3d]">
+      <div className="flex items-center justify-between bg-[#0f1520] px-2 py-1">
+        <span className="text-[10px] uppercase tracking-wider text-slate-500">{lang || 'code'}</span>
+        <button
+          onClick={() => getEditorBridge()?.replaceScript(code)}
+          className="rounded bg-emerald-600 px-2 py-0.5 text-[10px] font-medium text-white hover:bg-emerald-500"
+        >
+          Apply → editor
+        </button>
+      </div>
+      <pre className="max-h-40 overflow-auto bg-[#0b101a] p-2 text-[10px] leading-relaxed text-slate-300">
+        <code>{code}</code>
+      </pre>
+    </div>
+  )
+}
+
 function AssistantContent({ text }: { text: string }) {
   const parts = text.split(/```(\w*)\n?/)
-  // split with one capture group: [text, lang, code, text, lang, code, ...]
   const nodes: React.ReactNode[] = []
   for (let i = 0; i < parts.length; i += 1) {
     if (i % 3 === 0) {
       if (parts[i]) nodes.push(<p key={i} className="whitespace-pre-wrap">{parts[i]}</p>)
     } else if (i % 3 === 2) {
-      const code = parts[i].replace(/\n$/, '')
-      nodes.push(
-        <div key={i} className="my-1.5 overflow-hidden rounded border border-[#232d3d]">
-          <div className="flex items-center justify-between bg-[#0f1520] px-2 py-1">
-            <span className="text-[10px] uppercase tracking-wider text-slate-500">{parts[i - 1] || 'code'}</span>
-            <button
-              onClick={() => getEditorBridge()?.replaceScript(code)}
-              className="rounded bg-emerald-600 px-2 py-0.5 text-[10px] font-medium text-white hover:bg-emerald-500"
-            >
-              Apply → editor
-            </button>
-          </div>
-          <pre className="max-h-40 overflow-auto bg-[#0b101a] p-2 text-[10px] leading-relaxed text-slate-300">
-            <code>{code}</code>
-          </pre>
-        </div>,
-      )
+      nodes.push(<CodeBlock key={i} lang={parts[i - 1]} code={parts[i].replace(/\n$/, '')} />)
     }
   }
   return <div className="space-y-1">{nodes}</div>
 }
 
+function ToolChip({ item }: { item: Item }) {
+  const [open, setOpen] = useState(false)
+  return (
+    <div className="rounded border border-[#232d3d] bg-[#0d1220] text-[11px]">
+      <button
+        onClick={() => setOpen((o) => !o)}
+        className="flex w-full items-center gap-2 px-2 py-1 text-left"
+      >
+        <span className={item.toolDone ? 'text-emerald-400' : 'text-amber-400'}>
+          {item.toolDone ? '✓' : '…'}
+        </span>
+        <span className="font-medium text-sky-300">{item.toolName}</span>
+        <span className="truncate text-slate-500">{item.toolArgs}</span>
+      </button>
+      {open && item.toolResult && (
+        <pre className="max-h-48 overflow-auto border-t border-[#232d3d] bg-[#0b101a] p-2 text-[10px] text-slate-400">
+          {item.toolResult}
+        </pre>
+      )}
+    </div>
+  )
+}
+
 export default function ChatPane() {
-  const [messages, setMessages] = useState<Msg[]>([])
+  const [items, setItems] = useState<Item[]>([])
   const [input, setInput] = useState('')
   const [streaming, setStreaming] = useState(false)
   const [error, setError] = useState<string | null>(null)
+  const historyRef = useRef<ChatMessage[]>([])
   const abortRef = useRef<AbortController | null>(null)
   const listRef = useRef<HTMLDivElement>(null)
   const configured = isLlmConfigured()
 
   useEffect(() => {
     listRef.current?.scrollTo({ top: listRef.current.scrollHeight })
-  }, [messages])
+  }, [items])
+
+  const push = (item: Omit<Item, 'id'>) => {
+    const id = nextId++
+    setItems((prev) => [...prev, { id, ...item }])
+    return id
+  }
+  const patch = (id: number, p: Partial<Item>) =>
+    setItems((prev) => prev.map((it) => (it.id === id ? { ...it, ...p } : it)))
 
   const send = async () => {
     const text = input.trim()
     if (!text || streaming) return
     setInput('')
     setError(null)
-
-    const userMsg: Msg = { id: nextId++, role: 'user', content: text }
-    const assistantId = nextId++
-    setMessages((m) => [
-      ...m,
-      userMsg,
-      { id: assistantId, role: 'assistant', content: '' },
-    ])
     setStreaming(true)
+    push({ kind: 'user', text })
+    if (historyRef.current.length === 0) {
+      historyRef.current.push({ role: 'system', content: SYSTEM_PROMPT })
+    }
+    historyRef.current.push({ role: 'user', content: text })
 
     const controller = new AbortController()
     abortRef.current = controller
+
     try {
-      await streamChat({
-        messages: [
-          { role: 'system', content: SYSTEM_PROMPT },
-          ...messages.map(({ role, content }) => ({ role, content })),
-          { role: 'user', content: text },
-        ],
-        signal: controller.signal,
-        onDelta: (delta) => {
-          setMessages((m) =>
-            m.map((msg) =>
-              msg.id === assistantId ? { ...msg, content: msg.content + delta } : msg,
+      // Agent loop: stream → run tool calls → repeat until the model stops calling tools.
+      for (let step = 0; step < 8; step += 1) {
+        const assistantId = nextId++
+        setItems((prev) => [...prev, { id: assistantId, kind: 'assistant', text: '' }])
+
+        const { content, toolCalls } = await streamChat({
+          messages: historyRef.current,
+          tools: AGENT_TOOLS,
+          signal: controller.signal,
+          onDelta: (delta) =>
+            setItems((prev) =>
+              prev.map((it) => (it.id === assistantId ? { ...it, text: it.text + delta } : it)),
             ),
-          )
-        },
-      })
+        })
+
+        if (toolCalls.length === 0) {
+          historyRef.current.push({ role: 'assistant', content })
+          break
+        }
+
+        historyRef.current.push({
+          role: 'assistant',
+          content: content || null,
+          tool_calls: toolCalls.map((c) => ({
+            id: c.id,
+            type: 'function',
+            function: { name: c.name, arguments: c.arguments },
+          })),
+        })
+
+        for (const call of toolCalls) {
+          const chipId = push({
+            kind: 'tool',
+            text: '',
+            toolName: call.name,
+            toolArgs: call.arguments.slice(0, 120),
+            toolDone: false,
+          })
+          let result: unknown
+          try {
+            result = await executeTool(call.name, call.arguments)
+          } catch (e) {
+            result = { error: e instanceof Error ? e.message : String(e) }
+          }
+          const resultJson = JSON.stringify(result)
+          patch(chipId, { toolDone: true, toolResult: resultJson })
+          historyRef.current.push({
+            role: 'tool',
+            tool_call_id: call.id,
+            content: resultJson.slice(0, 8000),
+          })
+        }
+      }
     } catch (e) {
       if (!(e instanceof DOMException && e.name === 'AbortError')) {
         setError(e instanceof Error ? e.message : String(e))
@@ -108,21 +195,25 @@ export default function ChatPane() {
             LLM not configured — set VITE_LLM_API_URL and VITE_LLM_MODEL (see .env.example).
           </p>
         )}
-        {messages.length === 0 && configured && (
+        {items.length === 0 && configured && (
           <p className="text-[11px] text-slate-500">
-            Ask for an indicator or strategy — apply code blocks straight to the editor.
+            Ask for a strategy — the agent reads market data, edits the script, applies it and
+            runs the backtest itself.
           </p>
         )}
         <div className="space-y-3">
-          {messages.map((m) =>
-            m.role === 'user' ? (
-              <p key={m.id} className="whitespace-pre-wrap rounded bg-[#0f1520] p-2 text-slate-200">
-                {m.content}
-              </p>
-            ) : (
-              <AssistantContent key={m.id} text={m.content} />
-            ),
-          )}
+          {items.map((it) => {
+            if (it.kind === 'user') {
+              return (
+                <p key={it.id} className="whitespace-pre-wrap rounded bg-[#0f1520] p-2 text-slate-200">
+                  {it.text}
+                </p>
+              )
+            }
+            if (it.kind === 'tool') return <ToolChip key={it.id} item={it} />
+            if (!it.text) return null
+            return <AssistantContent key={it.id} text={it.text} />
+          })}
         </div>
         {error && (
           <p className="mt-2 rounded border border-rose-900 bg-rose-950/40 p-2 text-[11px] text-rose-300">
@@ -141,7 +232,7 @@ export default function ChatPane() {
             }
           }}
           rows={2}
-          placeholder={configured ? 'Describe a strategy…' : 'LLM not configured'}
+          placeholder={configured ? 'e.g. Build a breakout strategy and backtest it' : 'LLM not configured'}
           disabled={!configured || streaming}
           className="flex-1 resize-none rounded border border-[#232d3d] bg-[#0f1520] px-2 py-1.5 text-[12px] text-slate-200 placeholder:text-slate-600 disabled:opacity-50"
         />

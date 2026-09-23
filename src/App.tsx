@@ -54,6 +54,10 @@ export default function App() {
 
   setEditorBridge({
     getScript: () => scriptRef.current,
+    setScript: (source) => {
+      setScript(source)
+      scriptRef.current = source
+    },
     replaceScript: (source) => {
       setScript(source)
       scriptRef.current = source

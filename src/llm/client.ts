@@ -4,9 +4,28 @@ export interface LlmConfig {
   model: string
 }
 
+export interface ToolCall {
+  id: string
+  name: string
+  /** Raw JSON string of the arguments, as streamed by the API. */
+  arguments: string
+}
+
+/** A function tool definition (OpenAI `tools` entry). */
+export interface ToolDef {
+  type: 'function'
+  function: {
+    name: string
+    description: string
+    parameters: Record<string, unknown>
+  }
+}
+
 export interface ChatMessage {
-  role: 'system' | 'user' | 'assistant'
-  content: string
+  role: 'system' | 'user' | 'assistant' | 'tool'
+  content: string | null
+  tool_calls?: { id: string; type: 'function'; function: { name: string; arguments: string } }[]
+  tool_call_id?: string
 }
 
 /** Read OpenAI-compatible endpoint config from Vite env vars. */
@@ -22,18 +41,26 @@ export function isLlmConfigured(): boolean {
   return getLlmConfig() != null
 }
 
+export interface StreamResult {
+  content: string
+  toolCalls: ToolCall[]
+}
+
 interface StreamOptions {
   messages: ChatMessage[]
+  tools?: ToolDef[]
   signal?: AbortSignal
   /** Called incrementally with each text delta. */
   onDelta: (text: string) => void
+  /** Called when a tool call's name/arguments stream in (for live UI). */
+  onToolCall?: (call: ToolCall) => void
 }
 
 /**
- * Stream a chat completion from an OpenAI-compatible API (SSE). Resolves with
- * the full assistant message.
+ * Stream a chat completion from an OpenAI-compatible API (SSE), accumulating
+ * any tool calls the model emits. Resolves with the full assistant turn.
  */
-export async function streamChat(opts: StreamOptions): Promise<string> {
+export async function streamChat(opts: StreamOptions): Promise<StreamResult> {
   const cfg = getLlmConfig()
   if (!cfg) throw new Error('LLM not configured — set VITE_LLM_API_URL and VITE_LLM_MODEL')
 
@@ -48,6 +75,7 @@ export async function streamChat(opts: StreamOptions): Promise<string> {
       model: cfg.model,
       messages: opts.messages,
       stream: true,
+      ...(opts.tools && opts.tools.length > 0 ? { tools: opts.tools } : {}),
     }),
   })
 
@@ -59,7 +87,31 @@ export async function streamChat(opts: StreamOptions): Promise<string> {
   const reader = res.body.getReader()
   const decoder = new TextDecoder()
   let buffer = ''
-  let full = ''
+  let content = ''
+  const toolCalls: ToolCall[] = []
+
+  const handleDelta = (delta: {
+    content?: string | null
+    tool_calls?: {
+      index?: number
+      id?: string
+      function?: { name?: string; arguments?: string }
+    }[]
+  }) => {
+    if (delta.content) {
+      content += delta.content
+      opts.onDelta(delta.content)
+    }
+    for (const part of delta.tool_calls ?? []) {
+      const i = part.index ?? 0
+      const existing = toolCalls[i] ?? { id: '', name: '', arguments: '' }
+      if (part.id) existing.id = part.id
+      if (part.function?.name) existing.name = part.function.name
+      if (part.function?.arguments) existing.arguments += part.function.arguments
+      toolCalls[i] = existing
+      opts.onToolCall?.(existing)
+    }
+  }
 
   for (;;) {
     const { done, value } = await reader.read()
@@ -75,18 +127,15 @@ export async function streamChat(opts: StreamOptions): Promise<string> {
       if (data === '[DONE]') continue
       try {
         const parsed = JSON.parse(data) as {
-          choices?: { delta?: { content?: string } }[]
+          choices?: { delta?: Parameters<typeof handleDelta>[0] }[]
         }
-        const delta = parsed.choices?.[0]?.delta?.content
-        if (delta) {
-          full += delta
-          opts.onDelta(delta)
-        }
+        const delta = parsed.choices?.[0]?.delta
+        if (delta) handleDelta(delta)
       } catch {
         // partial or non-JSON line — skip
       }
     }
   }
 
-  return full
+  return { content, toolCalls: toolCalls.filter((t) => t.name) }
 }
