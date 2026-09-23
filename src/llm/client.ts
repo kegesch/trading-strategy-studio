@@ -60,7 +60,11 @@ interface StreamOptions {
  * Stream a chat completion from an OpenAI-compatible API (SSE), accumulating
  * any tool calls the model emits. Resolves with the full assistant turn.
  */
-export async function streamChat(opts: StreamOptions): Promise<StreamResult> {
+interface StreamResultInternal extends StreamResult {
+  finishReason: string | null
+}
+
+export async function streamChat(opts: StreamOptions): Promise<StreamResultInternal> {
   const cfg = getLlmConfig()
   if (!cfg) throw new Error('LLM not configured — set VITE_LLM_API_URL and VITE_LLM_MODEL')
 
@@ -88,6 +92,7 @@ export async function streamChat(opts: StreamOptions): Promise<StreamResult> {
   const decoder = new TextDecoder()
   let buffer = ''
   let content = ''
+  let finishReason: string | null = null
   const toolCalls: ToolCall[] = []
 
   const handleDelta = (delta: {
@@ -127,8 +132,12 @@ export async function streamChat(opts: StreamOptions): Promise<StreamResult> {
       if (data === '[DONE]') continue
       try {
         const parsed = JSON.parse(data) as {
-          choices?: { delta?: Parameters<typeof handleDelta>[0] }[]
+          choices?: {
+            delta?: Parameters<typeof handleDelta>[0]
+            finish_reason?: string | null
+          }[]
         }
+        if (parsed.choices?.[0]?.finish_reason) finishReason = parsed.choices[0].finish_reason
         const delta = parsed.choices?.[0]?.delta
         if (delta) handleDelta(delta)
       } catch {
@@ -137,5 +146,10 @@ export async function streamChat(opts: StreamOptions): Promise<StreamResult> {
     }
   }
 
-  return { content, toolCalls: toolCalls.filter((t) => t.name) }
+  const calls = toolCalls.filter((t) => t.name).map((t, i) => ({
+    ...t,
+    id: t.id || `call_${i}`,
+  }))
+
+  return { content, toolCalls: calls, finishReason }
 }

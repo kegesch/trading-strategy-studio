@@ -13,7 +13,9 @@ const SYSTEM_PROMPT = `You are the trading assistant inside Trading Bot Studio, 
 
 You have tools to inspect and change the workspace:
 - get_chart_state, get_market_data: read the chart and market data.
-- get_script, set_script: read and write the Pine Script editor (set_script applies it to the chart by default).
+- read_script: read the Pine Script editor with line numbers (optionally a line range).
+- edit_script: edit the editor script (applies to the chart by default). Prefer line mode: read_script first, then replace lines startLine..endLine with newString. To insert, set endLine = startLine - 1. Alternatively replace an exact unique oldString with newString.
+- After every edit the script is syntax-checked; on error it is shown in the editor but NOT applied — fix the reported diagnostics and edit again.
 - run_backtest: run the current (or a given) Pine strategy and get metrics back.
 
 Work autonomously: inspect the current script/state when useful, write complete Pine Script v5, apply it, and run a backtest to report concrete results (net profit, win rate, drawdown). Use strategy() with strategy.entry/strategy.close for backtestable scripts and input.int/input.float for parameters. Keep prose tight; put code in \`\`\`pine fences.`
@@ -157,12 +159,12 @@ export default function ChatPane() {
 
     try {
       // Agent loop: stream → run tool calls → repeat until the model stops calling tools.
-      for (let step = 0; step < 8; step += 1) {
+      for (;;) {
         const assistantId = nextId++
         setItems((prev) => [...prev, { id: assistantId, kind: 'assistant', text: '' }])
         setStatus('Thinking…')
 
-        const { content, toolCalls } = await streamChat({
+        const { content, toolCalls, finishReason } = await streamChat({
           messages: historyRef.current,
           tools: AGENT_TOOLS,
           signal: controller.signal,
@@ -171,6 +173,12 @@ export default function ChatPane() {
               prev.map((it) => (it.id === assistantId ? { ...it, text: it.text + delta } : it)),
             ),
         })
+
+        if (finishReason === 'length') {
+          throw new Error(
+            'Model output was truncated (context/output limit reached). Start a new chat or ask for a smaller response.',
+          )
+        }
 
         if (toolCalls.length === 0) {
           historyRef.current.push({ role: 'assistant', content })
