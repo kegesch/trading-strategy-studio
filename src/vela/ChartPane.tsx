@@ -3,6 +3,7 @@ import { VelaWorkspace } from '@luxalgo/vela/workspace'
 import { PineWorkerEngine } from '@luxalgo/vela-pinets'
 
 import { OkxVelaProvider, OKX_PROVIDER_NAME } from '../okx/provider-vela'
+import { setStudio } from '../studio/store'
 
 const EMA_INDICATOR = {
   name: 'EMA 20',
@@ -33,9 +34,20 @@ export default function ChartPane() {
       persist: false,
     })
     wsRef.current = ws
+
+    const publishMarket = () => {
+      const market = ws.active.chart.market
+      if (market.symbol) {
+        setStudio({ symbol: market.symbol, timeframe: market.timeframe ?? '60' })
+      }
+    }
+    publishMarket()
+    ws.active.chart.on('market:changed', publishMarket)
+
     return () => {
       ws.destroy()
       wsRef.current = null
+      setStudio({ ws: null })
     }
   }, [])
 

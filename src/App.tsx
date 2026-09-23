@@ -5,6 +5,7 @@ import ChartPane from './vela/ChartPane'
 import EditorPane from './editor/EditorPane'
 import BacktestPane from './backtest/BacktestPane'
 import { SAMPLE_PINE_STRATEGY } from './editor/sample-script'
+import { runScriptOnChart, useStudio } from './studio/store'
 
 const clamp = (v: number, min: number, max: number) =>
   Math.max(min, Math.min(max, v))
@@ -14,15 +15,18 @@ const MAX = 0.7
 
 function Pane({
   title,
+  actions,
   children,
 }: {
   title: string
+  actions?: React.ReactNode
   children: React.ReactNode
 }) {
   return (
     <section className="flex flex-col flex-1 min-w-0 min-h-0 border-x border-[#232d3d] bg-[#111722]">
       <header className="panel-header">
         <span className="panel-title">{title}</span>
+        {actions && <span className="ml-auto flex items-center gap-2">{actions}</span>}
       </header>
       <div className="panel-body">
         {children}
@@ -51,6 +55,14 @@ function Placeholder({
 export default function App() {
   const [sizes, setSizes] = useState({ left: 0.4, mid: 0.3 })
   const [script, setScript] = useState(SAMPLE_PINE_STRATEGY)
+  const { symbol, timeframe } = useStudio()
+  const [chartMsg, setChartMsg] = useState<string | null>(null)
+
+  const addToChart = () => {
+    const err = runScriptOnChart(script)
+    setChartMsg(err ?? 'Added to chart')
+    if (err) window.setTimeout(() => setChartMsg(null), 4000)
+  }
 
   const resizeLeft = (delta: number) => {
     setSizes((s) => {
@@ -83,7 +95,9 @@ export default function App() {
           className="flex shrink-0 min-w-0"
           style={{ width: `${sizes.left * 100}%` }}
         >
-          <Pane title="Vela chart">
+          <Pane
+            title={`Vela chart — ${symbol} · ${timeframe}`}
+          >
             <ChartPane />
           </Pane>
         </div>
@@ -92,7 +106,20 @@ export default function App() {
           className="flex shrink-0 min-w-0"
           style={{ width: `${sizes.mid * 100}%` }}
         >
-          <Pane title="Script editor">
+          <Pane
+            title="Script editor"
+            actions={
+              <>
+                {chartMsg && <span className="text-[10px] text-slate-500">{chartMsg}</span>}
+                <button
+                  onClick={addToChart}
+                  className="rounded bg-emerald-600 px-2 py-0.5 text-[11px] font-medium text-white hover:bg-emerald-500"
+                >
+                  Add to chart
+                </button>
+              </>
+            }
+          >
             <EditorPane value={script} onChange={setScript} />
           </Pane>
         </div>
@@ -105,7 +132,7 @@ export default function App() {
             />
           </Pane>
           <Pane title="Backtest">
-            <BacktestPane script={script} ticker="BTC-USDT" timeframe="60" />
+            <BacktestPane script={script} />
           </Pane>
         </div>
       </main>
