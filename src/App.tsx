@@ -2,6 +2,8 @@ import { useState } from 'react'
 
 import Resizer from './Resizer'
 import ChartPane from './vela/ChartPane'
+import EditorPane from './editor/EditorPane'
+import { SAMPLE_PINE_STRATEGY } from './editor/sample-script'
 
 const clamp = (v: number, min: number, max: number) =>
   Math.max(min, Math.min(max, v))
@@ -47,6 +49,7 @@ function Placeholder({
 
 export default function App() {
   const [sizes, setSizes] = useState({ left: 0.4, mid: 0.3 })
+  const [script, setScript] = useState(SAMPLE_PINE_STRATEGY)
 
   const resizeLeft = (delta: number) => {
     setSizes((s) => {
@@ -89,10 +92,7 @@ export default function App() {
           style={{ width: `${sizes.mid * 100}%` }}
         >
           <Pane title="Script editor">
-            <Placeholder
-              title="Script pane"
-              subtitle="Monaco editor — PineScript / TypeScript (task 7)"
-            />
+            <EditorPane value={script} onChange={setScript} />
           </Pane>
         </div>
         <Resizer ariaLabel="Resize script pane" onResize={resizeMid} />
