@@ -31,7 +31,7 @@ export default function ChartPane() {
       indicators: [EMA_INDICATOR],
       live: true,
       theme: 'dark',
-      persist: false,
+      persist: true,
     })
     wsRef.current = ws
     setStudio({ ws })

@@ -1,4 +1,4 @@
-﻿import { useRef, useState } from 'react'
+﻿import { useEffect, useRef, useState } from 'react'
 
 import Resizer from './Resizer'
 import ChartPane from './vela/ChartPane'
@@ -8,6 +8,7 @@ import BacktestPane from './backtest/BacktestPane'
 import ChatPane from './chat/ChatPane'
 import { SAMPLE_PINE_STRATEGY } from './editor/sample-script'
 import { runScriptOnChart, useStudio, setEditorBridge } from './studio/store'
+import { loadScript, saveScript } from './studio/persistence'
 
 const clamp = (v: number, min: number, max: number) =>
   Math.max(min, Math.min(max, v))
@@ -39,11 +40,15 @@ function Pane({
 
 export default function App() {
   const [sizes, setSizes] = useState({ left: 0.4, mid: 0.3 })
-  const [script, setScript] = useState(SAMPLE_PINE_STRATEGY)
+  const [script, setScript] = useState(() => loadScript() ?? SAMPLE_PINE_STRATEGY)
   const scriptRef = useRef(script)
   const { symbol, timeframe } = useStudio()
   const [chartMsg, setChartMsg] = useState<string | null>(null)
   const [applyVersion, setApplyVersion] = useState(0)
+
+  useEffect(() => {
+    saveScript(script)
+  }, [script])
 
   const applyToChart = () => {
     const err = runScriptOnChart(scriptRef.current)

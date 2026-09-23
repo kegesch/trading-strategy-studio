@@ -7,6 +7,7 @@ import {
 } from '../llm/client'
 import { AGENT_TOOLS, executeTool } from '../agent/tools'
 import { getEditorBridge } from '../studio/store'
+import { chatKey, loadJson, saveJson } from '../studio/persistence'
 
 const SYSTEM_PROMPT = `You are the trading assistant inside Trading Bot Studio, a Pine Script workbench for OKX crypto markets.
 
@@ -28,6 +29,18 @@ interface Item {
 }
 
 let nextId = 0
+
+interface PersistedChat {
+  items: Item[]
+  history: ChatMessage[]
+}
+
+function loadPersisted(): PersistedChat {
+  const data = loadJson<PersistedChat>(chatKey)
+  if (!data) return { items: [], history: [] }
+  nextId = data.items.reduce((m, it) => Math.max(m, it.id), 0) + 1
+  return data
+}
 
 function CodeBlock({ lang, code }: { lang: string; code: string }) {
   return (
@@ -85,17 +98,23 @@ function ToolChip({ item }: { item: Item }) {
 }
 
 export default function ChatPane() {
-  const [items, setItems] = useState<Item[]>([])
+  const persisted = useRef<PersistedChat | null>(null)
+  if (persisted.current === null) persisted.current = loadPersisted()
+  const [items, setItems] = useState<Item[]>(persisted.current.items)
   const [input, setInput] = useState('')
   const [streaming, setStreaming] = useState(false)
   const [error, setError] = useState<string | null>(null)
-  const historyRef = useRef<ChatMessage[]>([])
+  const historyRef = useRef<ChatMessage[]>(persisted.current.history)
   const abortRef = useRef<AbortController | null>(null)
   const listRef = useRef<HTMLDivElement>(null)
   const configured = isLlmConfigured()
 
   useEffect(() => {
     listRef.current?.scrollTo({ top: listRef.current.scrollHeight })
+  }, [items])
+
+  useEffect(() => {
+    saveJson(chatKey, { items, history: historyRef.current })
   }, [items])
 
   const push = (item: Omit<Item, 'id'>) => {
@@ -113,8 +132,8 @@ export default function ChatPane() {
     setError(null)
     setStreaming(true)
     push({ kind: 'user', text })
-    if (historyRef.current.length === 0) {
-      historyRef.current.push({ role: 'system', content: SYSTEM_PROMPT })
+    if (historyRef.current[0]?.role !== 'system') {
+      historyRef.current.unshift({ role: 'system', content: SYSTEM_PROMPT })
     }
     historyRef.current.push({ role: 'user', content: text })
 
@@ -222,6 +241,19 @@ export default function ChatPane() {
         )}
       </div>
       <div className="flex shrink-0 items-end gap-2 border-t border-[#232d3d] p-2">
+        {items.length > 0 && !streaming && (
+          <button
+            onClick={() => {
+              setItems([])
+              historyRef.current = []
+              saveJson(chatKey, { items: [], history: [] })
+            }}
+            className="rounded border border-[#232d3d] px-2 py-1.5 text-[11px] text-slate-400 hover:text-slate-200"
+            title="Clear conversation"
+          >
+            Clear
+          </button>
+        )}
         <textarea
           value={input}
           onChange={(e) => setInput(e.target.value)}
