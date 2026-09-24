@@ -47,6 +47,10 @@ const TF_TO_OKX_BAR: Record<string, string> = {
   '3D': '3D',
   '1W': '1W',
   '1M': '1M',
+  // pinets-canonical aliases
+  D: '1D',
+  W: '1W',
+  M: '1M',
 };
 
 export function okxBarFor(timeframe: string): string {
@@ -70,6 +74,9 @@ OKX_BAR_TO_TF['1M'] = 'M';
  * ('1H', '1D') and return the canonical form.
  */
 export function normalizeTimeframe(timeframe: string): string {
+  if (timeframe === '1D') return 'D';
+  if (timeframe === '1W') return 'W';
+  if (timeframe === '1M') return 'M';
   if (TF_TO_OKX_BAR[timeframe]) return timeframe;
   return OKX_BAR_TO_TF[timeframe] ?? timeframe;
 }

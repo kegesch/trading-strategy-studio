@@ -18,7 +18,8 @@ export interface HistoryRange {
 
 export type HistoryFetcher = (
   instId: string,
-  okxBar: string,
+  /** Canonical timeframe ('60', 'D', …) — NOT the OKX bar string. */
+  timeframe: string,
   after?: number,
   before?: number,
 ) => Promise<Bar[]>
@@ -27,11 +28,11 @@ const sleep = (ms: number) => new Promise((r) => setTimeout(r, ms))
 
 function defaultFetcher(
   instId: string,
-  okxBar: string,
+  timeframe: string,
   after?: number,
   before?: number,
 ): Promise<Bar[]> {
-  return fetchCandles(instId, okxBar, PAGE_SIZE, after, before)
+  return fetchCandles(instId, timeframe, PAGE_SIZE, after, before)
 }
 
 /**
@@ -47,7 +48,7 @@ export async function downloadHistory(
   onPage?: (downloaded: number) => void,
 ): Promise<Bar[]> {
   const tf = normalizeTimeframe(timeframe)
-  const okxBar = okxBarFor(tf)
+  okxBarFor(tf) // fail fast on unsupported timeframes
   const out: Bar[] = []
   const seen = new Set<number>()
   const from = range.from
@@ -59,7 +60,7 @@ export async function downloadHistory(
 
   while (out.length < (range.maxBars ?? Infinity) && guard < MAX_PAGES) {
     guard += 1
-    const page = await fetcher(instId, okxBar, after, before)
+    const page = await fetcher(instId, tf, after, before)
     if (page.length === 0) {
       // `to` may be ≈ now: no records strictly newer — retry unanchored once.
       if (before != null) {
