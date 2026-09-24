@@ -118,7 +118,7 @@ plot(ta.sma(close, 10))
     expect(strategy).toBeNull()
   })
 
-  it('strips initial_capital so the pinets trade bug is avoided', async () => {
+  it('honors a declared initial_capital', async () => {
     const { strategy } = await runBacktest({
       ticker: 'TEST',
       timeframe: '60',
@@ -128,6 +128,11 @@ plot(ta.sma(close, 10))
     })
     expect(strategy).not.toBeNull()
     expect(strategy!.closedtrades.length).toBeGreaterThan(0)
+    expect(strategy!.initial_capital).toBe(10000)
+    expect(strategy!.equity).toBeCloseTo(
+      strategy!.initial_capital + strategy!.netprofit + strategy!.openprofit,
+      4,
+    )
   })
 
   it('applies realistic fills: commissions reduce profit vs zero-cost run', async () => {

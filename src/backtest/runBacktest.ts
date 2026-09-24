@@ -35,24 +35,9 @@ export interface BacktestResult {
   runMs: number
   /** IS/OOS decomposition of the run (null for indicators / no closed trades). */
   isOos: IsOosResult | null
-  /**
-   * The `initial_capital=` value stripped from the script (pinets 0.9.x bug).
-   * The engine then runs on its default capital, so absolute figures reflect
-   * that default, not the declared value.
-   */
-  strippedInitialCapital: number | null
 }
 
 const defaultProvider = new OkxPinetsProvider()
-
-/**
- * pinets 0.9.x bug: an `initial_capital=` declaration arg (or prop) makes the
- * strategy engine register no trades at all. Strip it and rely on the default
- * (1,000,000) until the runtime is fixed.
- */
-function workaroundInitialCapital(script: string): string {
-  return script.replace(/\s*,?\s*initial_capital\s*=\s*[\w.]+/, '')
-}
 
 /**
  * Run the edited Pine script over OKX candles via the standalone pinets
@@ -67,13 +52,10 @@ export async function runBacktest(params: BacktestParams): Promise<BacktestResul
     timeframe,
     params.limit,
   )
-  const script = workaroundInitialCapital(params.script)
-  const declaredCapital = /\binitial_capital\s*=\s*([\w.]+)/.exec(params.script)
-  const strippedInitialCapital = declaredCapital ? Number(declaredCapital[1]) : null
   const fills =
     params.fills === false ? null : (params.fills ?? okxDefaultFills(params.ticker))
-  const context = await pine.run(fills ? applyRealisticFills(script, fills) : script)
+  const context = await pine.run(fills ? applyRealisticFills(params.script, fills) : params.script)
   const strategy = context.strategy ?? null
   const isOos = strategy ? computeIsOos(strategy, params.isOosSplit) : null
-  return { strategy, runMs: performance.now() - started, isOos, strippedInitialCapital }
+  return { strategy, runMs: performance.now() - started, isOos }
 }
