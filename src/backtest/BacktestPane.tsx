@@ -3,6 +3,9 @@ import { useMemo, useState } from 'react'
 import { runBacktest, type BacktestResult } from '../backtest/runBacktest'
 import type { IsOosResult, TradeMetrics } from '../backtest/isOos'
 import SweepPanel from '../backtest/SweepPanel'
+import { getHistory } from '../okx/history'
+import { toOkxInstId } from '../okx/provider-vela'
+import { TIMEFRAME_SECONDS } from 'pinets'
 import { setBacktest, useStudio } from '../studio/store'
 
 const fmt = (v: number | undefined, digits = 2) =>
@@ -113,6 +116,21 @@ export default function BacktestPane({ script }: { script: string }) {
   const [running, setRunning] = useState(false)
   const [error, setError] = useState<string | null>(null)
   const [view, setView] = useState<'full' | 'isoos'>('full')
+  const [downloadNote, setDownloadNote] = useState<string | null>(null)
+
+  const downloadHistory = async () => {
+    setDownloadNote('Downloading…')
+    try {
+      const seconds = TIMEFRAME_SECONDS[timeframe] ?? 3600
+      const bars = await getHistory(toOkxInstId(symbol), timeframe, {
+        from: Date.now() - 20000 * seconds * 1000,
+        maxBars: 20000,
+      }, undefined, (n) => setDownloadNote(`${n} bars…`))
+      setDownloadNote(`Cached ${bars.length} bars`)
+    } catch (e) {
+      setDownloadNote(`Error: ${e instanceof Error ? e.message : String(e)}`)
+    }
+  }
 
   const run = async () => {
     setRunning(true)
@@ -147,6 +165,14 @@ export default function BacktestPane({ script }: { script: string }) {
           aria-label="Bars to backtest"
         />
         <span className="text-[11px] text-slate-500">bars</span>
+        <button
+          onClick={downloadHistory}
+          title="Download up to 20k bars into the local cache"
+          className="rounded border border-[#232d3d] bg-[#0f1520] px-2 py-1 text-[11px] text-slate-400 hover:text-slate-200"
+        >
+          Cache history
+        </button>
+        {downloadNote && <span className="text-[10px] text-slate-600">{downloadNote}</span>}
         {result?.isOos && (
           <div className="flex overflow-hidden rounded border border-[#232d3d] text-[11px]">
             {(['full', 'isoos'] as const).map((v) => (

@@ -1,9 +1,10 @@
-import { BaseProvider } from 'pinets'
+import { BaseProvider, TIMEFRAME_SECONDS } from 'pinets'
 import type { ISymbolInfo } from 'pinets'
 import type { Kline } from 'pinets'
 
-import type { Instrument } from './fetch'
+import type { Bar, Instrument } from './fetch'
 import { fetchInstruments } from './fetch'
+import { getHistory } from './history'
 import {
   fetchRangeForward,
   fetchRecentBackward,
@@ -85,13 +86,37 @@ export class OkxPinetsProvider extends BaseProvider {
     const bars =
       sDate != null
         ? await fetchRangeForward(instId, okxTf, sDate, eDate, limit)
-        : await fetchRecentBackward(instId, okxTf, limit ?? 500, eDate)
+        : await this.getRecentCached(instId, okxTf, timeframe, limit ?? 500, eDate)
     // 24/7 market: closeTime = next bar's openTime (BaseProvider normalizes).
     const klines = bars.map(toKline)
     for (let i = 0; i < klines.length - 1; i += 1) {
       klines[i].closeTime = klines[i + 1].openTime
     }
     return klines
+  }
+
+  /**
+   * Recent-bars path served through the local candle cache: cached bars are
+   * reused and only the missing head is fetched from OKX REST.
+   */
+  private async getRecentCached(
+    instId: string,
+    okxTf: string,
+    timeframe: string,
+    limit: number,
+    to: number | undefined,
+  ): Promise<Bar[]> {
+    const seconds = TIMEFRAME_SECONDS[timeframe] ?? 3600
+    const end = to ?? Date.now()
+    const bars = await getHistory(instId, okxTf, {
+      from: end - limit * seconds * 1000,
+      to: end,
+      maxBars: limit,
+    })
+    if (bars.length > 0) return bars
+    // Empty cache window (e.g. `to` in the future or delisted data): fall back
+    // to the direct backward fetch so callers always get something.
+    return fetchRecentBackward(instId, okxTf, limit, to)
   }
 
   async getSymbolInfo(tickerId: string): Promise<ISymbolInfo> {
