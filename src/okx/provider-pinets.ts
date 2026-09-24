@@ -115,7 +115,7 @@ export class OkxPinetsProvider extends BaseProvider {
     if (bars.length > 0) return bars
     // Empty cache window (e.g. `to` in the future or delisted data): fall back
     // to the direct backward fetch so callers always get something.
-    return fetchRecentBackward(instId, okxTf, limit, to)
+    return fetchRecentBackward(instId, CANONICAL_TF_TO_OKX[timeframe] ?? timeframe, limit, to)
   }
 
   async getSymbolInfo(tickerId: string): Promise<ISymbolInfo> {
