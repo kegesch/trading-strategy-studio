@@ -86,7 +86,7 @@ export class OkxPinetsProvider extends BaseProvider {
     const bars =
       sDate != null
         ? await fetchRangeForward(instId, okxTf, sDate, eDate, limit)
-        : await this.getRecentCached(instId, okxTf, timeframe, limit ?? 500, eDate)
+        : await this.getRecentCached(instId, timeframe, limit ?? 500, eDate)
     // 24/7 market: closeTime = next bar's openTime (BaseProvider normalizes).
     const klines = bars.map(toKline)
     for (let i = 0; i < klines.length - 1; i += 1) {
@@ -101,14 +101,13 @@ export class OkxPinetsProvider extends BaseProvider {
    */
   private async getRecentCached(
     instId: string,
-    okxTf: string,
     timeframe: string,
     limit: number,
     to: number | undefined,
   ): Promise<Bar[]> {
     const seconds = TIMEFRAME_SECONDS[timeframe] ?? 3600
     const end = to ?? Date.now()
-    const bars = await getHistory(instId, okxTf, {
+    const bars = await getHistory(instId, timeframe, {
       from: end - limit * seconds * 1000,
       to: end,
       maxBars: limit,
