@@ -3,6 +3,7 @@ import { VelaWorkspace } from '@luxalgo/vela/workspace'
 import { PineWorkerEngine } from '@luxalgo/vela-pinets'
 
 import { OkxVelaProvider, OKX_PROVIDER_NAME } from '../okx/provider-vela'
+import { normalizeTimeframe } from '../okx/fetch'
 import { setStudio } from '../studio/store'
 
 const EMA_INDICATOR = {
@@ -53,7 +54,10 @@ export default function ChartPane() {
         const bare = market.symbol.includes(':')
           ? (market.symbol.split(':').pop() as string)
           : market.symbol
-        setStudio({ symbol: bare, timeframe: market.timeframe ?? '60' })
+        setStudio({
+          symbol: bare,
+          timeframe: normalizeTimeframe(market.timeframe ?? '60'),
+        })
       }
     }
     publishMarket()

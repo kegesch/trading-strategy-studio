@@ -2,6 +2,7 @@ import { PineTS, Context } from 'pinets'
 import type { IProvider } from 'pinets'
 
 import { OkxPinetsProvider } from '../okx/provider-pinets'
+import { normalizeTimeframe } from '../okx/fetch'
 import { applyRealisticFills, okxDefaultFills } from './fills'
 import type { FillsConfig } from './fills'
 import { computeIsOos } from './isOos'
@@ -53,10 +54,11 @@ function workaroundInitialCapital(script: string): string {
  */
 export async function runBacktest(params: BacktestParams): Promise<BacktestResult> {
   const started = performance.now()
+  const timeframe = normalizeTimeframe(params.timeframe)
   const pine = new PineTS(
     params.provider ?? defaultProvider,
     params.ticker,
-    params.timeframe,
+    timeframe,
     params.limit,
   )
   const script = workaroundInitialCapital(params.script)
