@@ -55,6 +55,25 @@ export function okxBarFor(timeframe: string): string {
   return bar;
 }
 
+/** OKX bar string → canonical timeframe (first writer wins). */
+const OKX_BAR_TO_TF: Record<string, string> = {};
+for (const [tf, bar] of Object.entries(TF_TO_OKX_BAR)) {
+  if (!(bar in OKX_BAR_TO_TF)) OKX_BAR_TO_TF[bar] = tf;
+}
+// Prefer the pinets-canonical keys for day/week/month.
+OKX_BAR_TO_TF['1D'] = 'D';
+OKX_BAR_TO_TF['1W'] = 'W';
+OKX_BAR_TO_TF['1M'] = 'M';
+
+/**
+ * Accept either canonical timeframes ('60', 'D') or OKX bar strings
+ * ('1H', '1D') and return the canonical form.
+ */
+export function normalizeTimeframe(timeframe: string): string {
+  if (TF_TO_OKX_BAR[timeframe]) return timeframe;
+  return OKX_BAR_TO_TF[timeframe] ?? timeframe;
+}
+
 interface OkxResponse<T> {
   code: string;
   msg: string;

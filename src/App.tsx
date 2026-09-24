@@ -7,7 +7,7 @@ import InputControls from './editor/InputControls'
 import BacktestPane from './backtest/BacktestPane'
 import ChatPane from './chat/ChatPane'
 import { SAMPLE_PINE_STRATEGY } from './editor/sample-script'
-import { runScriptOnChart, useStudio, setEditorBridge } from './studio/store'
+import { runScriptOnChart, useStudio, setEditorBridge, dismissError } from './studio/store'
 import { loadScript, saveScript } from './studio/persistence'
 
 const clamp = (v: number, min: number, max: number) =>
@@ -42,7 +42,7 @@ export default function App() {
   const [sizes, setSizes] = useState({ left: 0.4, mid: 0.3 })
   const [script, setScript] = useState(() => loadScript() ?? SAMPLE_PINE_STRATEGY)
   const scriptRef = useRef(script)
-  const { symbol, timeframe } = useStudio()
+  const { symbol, timeframe, lastError } = useStudio()
   const [chartMsg, setChartMsg] = useState<string | null>(null)
   const [applyVersion, setApplyVersion] = useState(0)
 
@@ -96,6 +96,21 @@ export default function App() {
           3-pane layout â€” drag dividers to resize
         </span>
       </header>
+      {lastError && (
+        <div className="flex shrink-0 items-center gap-2 border-b border-rose-900 bg-rose-950/60 px-3 py-1.5">
+          <span className="text-[11px] font-medium text-rose-300">Error</span>
+          <span className="min-w-0 flex-1 truncate text-[11px] text-rose-200" title={lastError}>
+            {lastError}
+          </span>
+          <button
+            onClick={dismissError}
+            className="rounded px-1.5 text-[11px] text-rose-400 hover:text-rose-200"
+            aria-label="Dismiss error"
+          >
+            ✕
+          </button>
+        </div>
+      )}
       <main className="flex flex-1 min-h-0">
         <div
           className="flex shrink-0 min-w-0"

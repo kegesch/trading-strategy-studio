@@ -4,6 +4,7 @@ import { runBacktest, type BacktestResult } from '../backtest/runBacktest'
 import type { IsOosResult, TradeMetrics } from '../backtest/isOos'
 import SweepPanel from '../backtest/SweepPanel'
 import { getHistory } from '../okx/history'
+import { normalizeTimeframe } from '../okx/fetch'
 import { toOkxInstId } from '../okx/provider-vela'
 import { TIMEFRAME_SECONDS } from 'pinets'
 import { setBacktest, useStudio } from '../studio/store'
@@ -121,7 +122,7 @@ export default function BacktestPane({ script }: { script: string }) {
   const downloadHistory = async () => {
     setDownloadNote('Downloading…')
     try {
-      const seconds = TIMEFRAME_SECONDS[timeframe] ?? 3600
+      const seconds = TIMEFRAME_SECONDS[normalizeTimeframe(timeframe)] ?? 3600
       const bars = await getHistory(toOkxInstId(symbol), timeframe, {
         from: Date.now() - 20000 * seconds * 1000,
         maxBars: 20000,

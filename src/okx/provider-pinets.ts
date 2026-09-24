@@ -3,7 +3,7 @@ import type { ISymbolInfo } from 'pinets'
 import type { Kline } from 'pinets'
 
 import type { Bar, Instrument } from './fetch'
-import { fetchInstruments } from './fetch'
+import { fetchInstruments, normalizeTimeframe } from './fetch'
 import { getHistory } from './history'
 import {
   fetchRangeForward,
@@ -105,7 +105,7 @@ export class OkxPinetsProvider extends BaseProvider {
     limit: number,
     to: number | undefined,
   ): Promise<Bar[]> {
-    const seconds = TIMEFRAME_SECONDS[timeframe] ?? 3600
+    const seconds = TIMEFRAME_SECONDS[normalizeTimeframe(timeframe)] ?? 3600
     const end = to ?? Date.now()
     const bars = await getHistory(instId, timeframe, {
       from: end - limit * seconds * 1000,

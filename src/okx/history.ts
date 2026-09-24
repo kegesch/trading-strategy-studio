@@ -1,5 +1,5 @@
 import type { Bar } from './fetch'
-import { fetchCandles, okxBarFor } from './fetch'
+import { fetchCandles, normalizeTimeframe, okxBarFor } from './fetch'
 import { cacheKey, loadCandles, saveCandles } from './cache'
 
 const PAGE_SIZE = 300
@@ -46,7 +46,8 @@ export async function downloadHistory(
   fetcher: HistoryFetcher = defaultFetcher,
   onPage?: (downloaded: number) => void,
 ): Promise<Bar[]> {
-  const okxBar = okxBarFor(timeframe)
+  const tf = normalizeTimeframe(timeframe)
+  const okxBar = okxBarFor(tf)
   const out: Bar[] = []
   const seen = new Set<number>()
   const from = range.from
@@ -105,7 +106,8 @@ export async function getHistory(
   fetcher: HistoryFetcher = defaultFetcher,
   onPage?: (downloaded: number) => void,
 ): Promise<Bar[]> {
-  const key = cacheKey(instId, timeframe)
+  const tf = normalizeTimeframe(timeframe)
+  const key = cacheKey(instId, tf)
   const cached = await loadCandles(key)
   const from = range.from
   const to = range.to ?? Date.now()

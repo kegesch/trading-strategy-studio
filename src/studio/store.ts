@@ -12,6 +12,8 @@ export interface StudioState {
   /** Last backtest run, shared between the agent and the backtest pane. */
   backtest: BacktestResult | null
   backtestSource: BacktestSource | null
+  /** Last unhandled error, shown as a dismissible banner. */
+  lastError: string | null
 }
 
 let state: StudioState = {
@@ -20,6 +22,7 @@ let state: StudioState = {
   timeframe: '60',
   backtest: null,
   backtestSource: null,
+  lastError: null,
 }
 const listeners = new Set<() => void>()
 
@@ -46,6 +49,34 @@ export function useStudio(): StudioState {
 /** Publish a backtest result so the pane shows it regardless of who ran it. */
 export function setBacktest(result: BacktestResult, source: BacktestSource) {
   setStudio({ backtest: result, backtestSource: source })
+}
+
+/** Surface an unhandled error in the UI banner. */
+export function reportError(message: string) {
+  setStudio({ lastError: message })
+}
+
+export function dismissError() {
+  setStudio({ lastError: null })
+}
+
+/**
+ * Install global handlers so promise rejections / errors that escape local
+ * try/catch (e.g. async work started inside library constructors) are shown
+ * in the UI instead of only the console. Idempotent.
+ */
+export function installErrorHandlers() {
+  if ((window as { __tbsErrorHandlers?: boolean }).__tbsErrorHandlers) return
+  ;(window as { __tbsErrorHandlers?: boolean }).__tbsErrorHandlers = true
+  window.addEventListener('unhandledrejection', (e) => {
+    const reason = e.reason
+    reportError(
+      reason instanceof Error ? reason.message : `Unhandled rejection: ${String(reason)}`,
+    )
+  })
+  window.addEventListener('error', (e) => {
+    reportError(e.message || 'Unknown error')
+  })
 }
 
 /**
