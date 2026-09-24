@@ -183,9 +183,14 @@ async function runBacktestTool(args: Record<string, unknown>): Promise<unknown> 
       : getEditorBridge()?.getScript()
   if (!source) return { error: 'No script available' }
 
-  const { strategy, runMs, isOos } = await runBacktest({ ticker, timeframe: tf, limit, script: source })
+  const { strategy, runMs, isOos, strippedInitialCapital } = await runBacktest({
+    ticker,
+    timeframe: tf,
+    limit,
+    script: source,
+  })
   // Share the raw run with the UI so the Backtest pane shows agent results too.
-  setBacktest({ strategy, runMs, isOos }, 'agent')
+  setBacktest({ strategy, runMs, isOos, strippedInitialCapital }, 'agent')
   if (!strategy) {
     return {
       ticker,
@@ -203,6 +208,10 @@ async function runBacktestTool(args: Record<string, unknown>): Promise<unknown> 
     bars: limit,
     isStrategy: true,
     runMs: Math.round(runMs),
+    initialCapitalNote:
+      strippedInitialCapital != null
+        ? `Script declared initial_capital=${strippedInitialCapital}, but the pinets runtime has a bug where the declaration produces no trades, so it was stripped and the engine default (${strategy.initial_capital}) was used. ALL reported absolute and percentage figures use ${strategy.initial_capital} — they are internally consistent. To size positions as if starting from ${strippedInitialCapital}, use explicit qty (e.g. strategy.percent_of_equity) and state returns as percentages.`
+        : null,
     metrics: {
       initialCapital: strategy.initial_capital,
       equity: round(strategy.equity),

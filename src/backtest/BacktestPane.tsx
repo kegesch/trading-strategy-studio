@@ -141,7 +141,7 @@ export default function BacktestPane({ script }: { script: string }) {
       setBacktest(result, 'user')
     } catch (e) {
       setError(e instanceof Error ? e.message : String(e))
-      setBacktest({ strategy: null, runMs: 0, isOos: null }, 'user')
+      setBacktest({ strategy: null, runMs: 0, isOos: null, strippedInitialCapital: null }, 'user')
     } finally {
       setRunning(false)
     }
@@ -260,6 +260,12 @@ export default function BacktestPane({ script }: { script: string }) {
           ) : (
             <p className="mt-2 text-[11px] text-slate-500">
               Script is an indicator, not a strategy — add strategy() to see metrics.
+            </p>
+          )}
+          {result.strippedInitialCapital != null && (
+            <p className="mt-1 text-[10px] text-amber-500">
+              initial_capital={result.strippedInitialCapital} ignored (pinets bug) — engine used{' '}
+              {s ? s.initial_capital.toLocaleString() : 'default'}; figures are consistent with that.
             </p>
           )}
           {s && view === 'isoos' && (
