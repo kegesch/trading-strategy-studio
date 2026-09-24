@@ -62,28 +62,30 @@ export default function EditorPane({ value, onChange, onSave }: Props) {
   }
 
   return (
-    <Editor
-      height="100%"
-      theme="vs-dark"
-      language={language}
-      value={value}
-      beforeMount={beforeMount}
-      onMount={onMount}
-      onChange={(v) => {
-        const source = v ?? ''
-        onChange(source)
-        updateDiagnostics(source)
-      }}
-      options={{
-        minimap: { enabled: false },
-        fontSize: 12,
-        tabSize: 4,
-        scrollBeyondLastLine: false,
-        automaticLayout: true,
-        renderWhitespace: 'none',
-        padding: { top: 8 },
-      }}
-      loading={<div className="p-3 text-xs text-slate-500">Loading editor…</div>}
-    />
+    <div className="min-h-0 flex-1">
+      <Editor
+        height="100%"
+        theme="vs-dark"
+        language={language}
+        value={value}
+        beforeMount={beforeMount}
+        onMount={onMount}
+        onChange={(v) => {
+          const source = v ?? ''
+          onChange(source)
+          updateDiagnostics(source)
+        }}
+        options={{
+          minimap: { enabled: false },
+          fontSize: 12,
+          tabSize: 4,
+          scrollBeyondLastLine: false,
+          automaticLayout: true,
+          renderWhitespace: 'none',
+          padding: { top: 8 },
+        }}
+        loading={<div className="p-3 text-xs text-slate-500">Loading editor…</div>}
+      />
+    </div>
   )
 }
