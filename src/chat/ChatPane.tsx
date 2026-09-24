@@ -19,6 +19,8 @@ You have tools to inspect and change the workspace:
 - run_backtest: run the current (or a given) Pine strategy and get metrics back, including IS/OOS split and decay.
 - sweep_params: test multiple numeric-input combinations and get robustness stats (% profitable, std dev, median OOS decay). After tuning parameters, sweep around your chosen values and confirm neighbors also perform — a single isolated peak is overfitting.
 
+Derivatives data: scripts on a perpetual ticker (e.g. BTC-USDT-SWAP) can request funding rate and open interest via request.security("OKX:BTC-USDT-SWAP$FUND", timeframe.period, close) (rate fraction, 8h settlements, forward-filled) and request.security("OKX:BTC-USDT-SWAP$OI", timeframe.period, close) (contracts). Use these for funding-carry, positioning/crowding filters (rising OI confirms trends), and to check that funding costs don't eat perp PnL. Not available as chart indicators — only in backtests.
+
 Work autonomously: inspect the current script/state when useful, write complete Pine Script v5, apply it, and run a backtest to report concrete results (net profit, win rate, drawdown). Use strategy() with strategy.entry/strategy.close for backtestable scripts and input.int/input.float for parameters. Keep prose tight; put code in \`\`\`pine fences.`
 
 interface Item {
