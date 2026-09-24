@@ -1,6 +1,7 @@
 import { useMemo, useState } from 'react'
 
 import { runBacktest, type BacktestResult } from '../backtest/runBacktest'
+import type { IsOosResult, TradeMetrics } from '../backtest/isOos'
 import { setBacktest, useStudio } from '../studio/store'
 
 const fmt = (v: number | undefined, digits = 2) =>
@@ -52,11 +53,65 @@ function EquityCurve({ result }: { result: BacktestResult }) {
   )
 }
 
+const decayVerdict = (decay: number) => {
+  if (Number.isNaN(decay)) return 'Not enough trades on one side to measure decay.'
+  if (decay >= 1) return 'Edge holds out-of-sample.'
+  if (decay >= 0.6) return 'Moderate OOS decay — edge is partially intact.'
+  return 'Heavy OOS decay — likely curve-fit to the in-sample period.'
+}
+
+function IsoosView({ isOos }: { isOos: IsOosResult }) {
+  const rows: { label: string; pick: (m: TradeMetrics) => string; tone?: (m: TradeMetrics) => 'pos' | 'neg' }[] = [
+    {
+      label: 'Net profit',
+      pick: (m) => fmt(m.netProfit),
+      tone: (m) => (m.netProfit >= 0 ? 'pos' : 'neg'),
+    },
+    { label: 'Trades', pick: (m) => String(m.tradeCount) },
+    { label: 'Win rate', pick: (m) => `${fmt(m.winRate, 1)}%` },
+    { label: 'Profit factor', pick: (m) => fmt(m.profitFactor) },
+    { label: 'Max drawdown', pick: (m) => fmt(-Math.abs(m.maxDrawdown)), tone: () => 'neg' },
+    { label: 'Avg trade', pick: (m) => fmt(m.avgTrade) },
+  ]
+  return (
+    <div className="mt-2">
+      <table className="w-full text-left text-[11px]">
+        <thead>
+          <tr className="text-slate-600">
+            <th className="py-1 pr-2 font-normal"></th>
+            <th className="py-1 pr-2 font-medium text-slate-400">In-sample</th>
+            <th className="py-1 font-medium text-slate-400">Out-of-sample</th>
+          </tr>
+        </thead>
+        <tbody>
+          {rows.map((r) => (
+            <tr key={r.label} className="border-t border-[#1a2332]">
+              <td className="py-1 pr-2 text-slate-500">{r.label}</td>
+              <td className="py-1 pr-2">{r.pick(isOos.is)}</td>
+              <td className={`py-1 ${r.tone?.(isOos.oos) === 'pos' ? 'text-emerald-400' : r.tone?.(isOos.oos) === 'neg' ? 'text-rose-400' : ''}`}>
+                {r.pick(isOos.oos)}
+              </td>
+            </tr>
+          ))}
+          <tr className="border-t border-[#1a2332]">
+            <td className="py-1 pr-2 text-slate-500">OOS / IS decay</td>
+            <td className="py-1" colSpan={2}>
+              {Number.isNaN(isOos.decay) ? '—' : `${fmt(isOos.decay * 100, 0)}%`}
+            </td>
+          </tr>
+        </tbody>
+      </table>
+      <p className="mt-2 text-[10px] text-slate-500">{decayVerdict(isOos.decay)}</p>
+    </div>
+  )
+}
+
 export default function BacktestPane({ script }: { script: string }) {
   const { symbol, timeframe, backtest: result, backtestSource } = useStudio()
   const [bars, setBars] = useState(1000)
   const [running, setRunning] = useState(false)
   const [error, setError] = useState<string | null>(null)
+  const [view, setView] = useState<'full' | 'isoos'>('full')
 
   const run = async () => {
     setRunning(true)
@@ -66,7 +121,7 @@ export default function BacktestPane({ script }: { script: string }) {
       setBacktest(result, 'user')
     } catch (e) {
       setError(e instanceof Error ? e.message : String(e))
-      setBacktest({ strategy: null, runMs: 0 }, 'user')
+      setBacktest({ strategy: null, runMs: 0, isOos: null }, 'user')
     } finally {
       setRunning(false)
     }
@@ -91,6 +146,19 @@ export default function BacktestPane({ script }: { script: string }) {
           aria-label="Bars to backtest"
         />
         <span className="text-[11px] text-slate-500">bars</span>
+        {result?.isOos && (
+          <div className="flex overflow-hidden rounded border border-[#232d3d] text-[11px]">
+            {(['full', 'isoos'] as const).map((v) => (
+              <button
+                key={v}
+                onClick={() => setView(v)}
+                className={`px-2 py-1 ${view === v ? 'bg-sky-600 text-white' : 'bg-[#0f1520] text-slate-400 hover:text-slate-200'}`}
+              >
+                {v === 'full' ? 'Full' : 'IS / OOS'}
+              </button>
+            ))}
+          </div>
+        )}
         <button
           onClick={run}
           disabled={running}
@@ -116,7 +184,7 @@ export default function BacktestPane({ script }: { script: string }) {
               </span>
             )}
           </p>
-          {s ? (
+          {s && view === 'full' ? (
             <>
               <div className="mt-2 grid grid-cols-2 gap-x-4 gap-y-1.5">
                 <Metric label="Net profit" value={`${fmt(s.netprofit)} (${fmt(netPct)}%)`} tone={s.netprofit >= 0 ? 'pos' : 'neg'} />
@@ -165,6 +233,13 @@ export default function BacktestPane({ script }: { script: string }) {
             <p className="mt-2 text-[11px] text-slate-500">
               Script is an indicator, not a strategy — add strategy() to see metrics.
             </p>
+          )}
+          {s && view === 'isoos' && (
+            result?.isOos ? (
+              <IsoosView isOos={result.isOos} />
+            ) : (
+              <p className="mt-2 text-[11px] text-slate-500">No closed trades to split.</p>
+            )
           )}
         </>
       )}

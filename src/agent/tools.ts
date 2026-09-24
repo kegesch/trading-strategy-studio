@@ -149,9 +149,9 @@ async function runBacktestTool(args: Record<string, unknown>): Promise<unknown> 
       : getEditorBridge()?.getScript()
   if (!source) return { error: 'No script available' }
 
-  const { strategy, runMs } = await runBacktest({ ticker, timeframe: tf, limit, script: source })
+  const { strategy, runMs, isOos } = await runBacktest({ ticker, timeframe: tf, limit, script: source })
   // Share the raw run with the UI so the Backtest pane shows agent results too.
-  setBacktest({ strategy, runMs }, 'agent')
+  setBacktest({ strategy, runMs, isOos }, 'agent')
   if (!strategy) {
     return {
       ticker,
@@ -185,6 +185,24 @@ async function runBacktestTool(args: Record<string, unknown>): Promise<unknown> 
       sortino: round(strategy.sortino_ratio),
       buyHoldPct: round(strategy.buy_and_hold_per_gain),
     },
+    isOos: isOos
+      ? {
+          inSample: {
+            trades: isOos.is.tradeCount,
+            netProfit: round(isOos.is.netProfit),
+            winRatePct: round(isOos.is.winRate, 1),
+            avgTrade: round(isOos.is.avgTrade),
+          },
+          outOfSample: {
+            trades: isOos.oos.tradeCount,
+            netProfit: round(isOos.oos.netProfit),
+            winRatePct: round(isOos.oos.winRate, 1),
+            avgTrade: round(isOos.oos.avgTrade),
+          },
+          decayPct: Number.isNaN(isOos.decay) ? null : round(isOos.decay * 100, 0),
+          note: 'decayPct = OOS avg trade / IS avg trade x100; well below 100 suggests curve-fit params.',
+        }
+      : null,
     trades: closed.slice(-20).map((t) => ({
       entryTime: t.entry_time,
       entryPrice: round(t.entry_price, 4),

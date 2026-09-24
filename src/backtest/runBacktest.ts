@@ -4,6 +4,8 @@ import type { IProvider } from 'pinets'
 import { OkxPinetsProvider } from '../okx/provider-pinets'
 import { applyRealisticFills, okxDefaultFills } from './fills'
 import type { FillsConfig } from './fills'
+import { computeIsOos } from './isOos'
+import type { IsOosResult } from './isOos'
 
 /** Full strategy report shape, as stored on a pinets run context. */
 export type StrategyReport = NonNullable<Context['strategy']>
@@ -20,11 +22,18 @@ export interface BacktestParams {
    * `false` for the raw zero-cost engine behaviour (diagnostics/comparison).
    */
   fills?: FillsConfig | false
+  /**
+   * Fraction of the trade span treated as in-sample for IS/OOS analysis
+   * (default 0.7). Remaining trades are out-of-sample.
+   */
+  isOosSplit?: number
 }
 
 export interface BacktestResult {
   strategy: StrategyReport | null
   runMs: number
+  /** IS/OOS decomposition of the run (null for indicators / no closed trades). */
+  isOos: IsOosResult | null
 }
 
 const defaultProvider = new OkxPinetsProvider()
@@ -55,5 +64,6 @@ export async function runBacktest(params: BacktestParams): Promise<BacktestResul
     params.fills === false ? null : (params.fills ?? okxDefaultFills(params.ticker))
   const context = await pine.run(fills ? applyRealisticFills(script, fills) : script)
   const strategy = context.strategy ?? null
-  return { strategy, runMs: performance.now() - started }
+  const isOos = strategy ? computeIsOos(strategy, params.isOosSplit) : null
+  return { strategy, runMs: performance.now() - started, isOos }
 }
