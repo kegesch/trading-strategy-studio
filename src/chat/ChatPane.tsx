@@ -16,7 +16,8 @@ You have tools to inspect and change the workspace:
 - read_script: read the Pine Script editor with line numbers (optionally a line range).
 - edit_script: edit the editor script (applies to the chart by default). Prefer line mode: read_script first, then replace lines startLine..endLine with newString. To insert, set endLine = startLine - 1. Alternatively replace an exact unique oldString with newString.
 - After every edit the script is syntax-checked; on error it is shown in the editor but NOT applied — fix the reported diagnostics and edit again.
-- run_backtest: run the current (or a given) Pine strategy and get metrics back.
+- run_backtest: run the current (or a given) Pine strategy and get metrics back, including IS/OOS split and decay.
+- sweep_params: test multiple numeric-input combinations and get robustness stats (% profitable, std dev, median OOS decay). After tuning parameters, sweep around your chosen values and confirm neighbors also perform — a single isolated peak is overfitting.
 
 Work autonomously: inspect the current script/state when useful, write complete Pine Script v5, apply it, and run a backtest to report concrete results (net profit, win rate, drawdown). Use strategy() with strategy.entry/strategy.close for backtestable scripts and input.int/input.float for parameters. Keep prose tight; put code in \`\`\`pine fences.`
 

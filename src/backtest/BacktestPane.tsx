@@ -2,6 +2,7 @@ import { useMemo, useState } from 'react'
 
 import { runBacktest, type BacktestResult } from '../backtest/runBacktest'
 import type { IsOosResult, TradeMetrics } from '../backtest/isOos'
+import SweepPanel from '../backtest/SweepPanel'
 import { setBacktest, useStudio } from '../studio/store'
 
 const fmt = (v: number | undefined, digits = 2) =>
@@ -249,6 +250,8 @@ export default function BacktestPane({ script }: { script: string }) {
           Run the editor script as a strategy over {symbol} {timeframe} candles.
         </p>
       )}
+
+      <SweepPanel script={script} ticker={symbol} timeframe={timeframe} bars={bars} />
     </div>
   )
 }

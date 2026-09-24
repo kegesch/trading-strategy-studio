@@ -1,5 +1,6 @@
 import type { ToolDef } from '../llm/client'
 import { runBacktest } from '../backtest/runBacktest'
+import { runSweep, MAX_SWEEP_COMBOS } from '../backtest/sweep'
 import { fetchCandles } from '../okx/fetch'
 import { toOkxInstId } from '../okx/provider-vela'
 import {
@@ -91,6 +92,39 @@ export const AGENT_TOOLS: ToolDef[] = [
             description: 'Pine strategy source; defaults to the current editor script',
           },
         },
+      },
+    },
+  },
+  {
+    type: 'function',
+    function: {
+      name: 'sweep_params',
+      description:
+        'Run the strategy over multiple numeric-input combinations and return per-combo metrics plus robustness stats (% profitable, std dev, median OOS decay). Use to justify parameter choices out-of-sample instead of cherry-picking. Numeric inputs are matched by their quoted title (e.g. input.int(9, "Fast length") → input "Fast length").',
+      parameters: {
+        type: 'object',
+        properties: {
+          axes: {
+            type: 'array',
+            description: `Parameter axes to sweep (cartesian product, max ${MAX_SWEEP_COMBOS} combos).`,
+            items: {
+              type: 'object',
+              properties: {
+                input: { type: 'string', description: 'Quoted title of a numeric input in the script' },
+                values: { type: 'array', items: { type: 'number' }, description: 'Values to test' },
+              },
+              required: ['input', 'values'],
+            },
+          },
+          ticker: { type: 'string', description: 'Defaults to chart symbol' },
+          timeframe: { type: 'string', description: 'Defaults to chart timeframe' },
+          bars: { type: 'number', description: 'Candles per run, max 5000 (default 1000)' },
+          source: {
+            type: 'string',
+            description: 'Pine strategy source; defaults to the current editor script',
+          },
+        },
+        required: ['axes'],
       },
     },
   },
@@ -214,6 +248,65 @@ async function runBacktestTool(args: Record<string, unknown>): Promise<unknown> 
   }
 }
 
+async function sweepParamsTool(args: Record<string, unknown>): Promise<unknown> {
+  const { symbol, timeframe } = getStudio()
+  const ticker = typeof args.ticker === 'string' && args.ticker ? args.ticker : symbol
+  const tf = typeof args.timeframe === 'string' && args.timeframe ? args.timeframe : timeframe
+  const limit = Math.min(Math.max(Number(args.bars) || 1000, 100), 5000)
+  const source =
+    typeof args.source === 'string' && args.source
+      ? args.source
+      : getEditorBridge()?.getScript()
+  if (!source) return { error: 'No script available' }
+
+  const rawAxes = Array.isArray(args.axes) ? args.axes : []
+  const axes = rawAxes
+    .map((a) => {
+      const axis = a as { input?: unknown; values?: unknown }
+      return {
+        title: typeof axis.input === 'string' ? axis.input : '',
+        values: Array.isArray(axis.values)
+          ? axis.values.map((v) => Number(v)).filter((v) => Number.isFinite(v))
+          : [],
+      }
+    })
+    .filter((a) => a.title && a.values.length > 0)
+  if (axes.length === 0) return { error: 'No valid axes — provide {input, values[]} entries' }
+
+  try {
+    const result = await runSweep({ script: source, axes, ticker, timeframe: tf, bars: limit })
+    const rb = result.robustness
+    return {
+      ticker,
+      timeframe: tf,
+      bars: limit,
+      axes: result.axes,
+      runs: result.runs.map((r) => ({
+        params: r.values,
+        netProfitPct: round(r.netProfitPct, 1),
+        trades: r.trades,
+        winRatePct: Number.isNaN(r.winRatePct) ? null : round(r.winRatePct, 1),
+        maxDrawdown: round(r.maxDrawdown),
+        oosDecayPct: r.oosDecay == null ? null : round(r.oosDecay * 100, 0),
+      })),
+      robustness: {
+        combos: rb.combos,
+        profitablePct: round(rb.profitablePct, 0),
+        medianNetPct: round(rb.medianNetPct, 1),
+        meanNetPct: round(rb.meanNetPct, 1),
+        stdNetPct: round(rb.stdNetPct, 1),
+        cvNetPct: round(rb.cvNetPct, 2),
+        medianOosDecayPct: rb.medianOosDecay == null ? null : round(rb.medianOosDecay * 100, 0),
+      },
+      note:
+        'Robust params: high % profitable, low CV, median OOS decay near/above 100%. ' +
+        'Avoid picking the single best combo if neighbors differ wildly.',
+    }
+  } catch (e) {
+    return { error: e instanceof Error ? e.message : String(e) }
+  }
+}
+
 /** Execute a tool call by name; returns a JSON-serializable result. */
 export async function executeTool(name: string, argsJson: string): Promise<unknown> {
   let args: Record<string, unknown> = {}
@@ -327,6 +420,8 @@ export async function executeTool(name: string, argsJson: string): Promise<unkno
     }
     case 'run_backtest':
       return runBacktestTool(args)
+    case 'sweep_params':
+      return sweepParamsTool(args)
     default:
       return { error: `Unknown tool: ${name}` }
   }
