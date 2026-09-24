@@ -87,7 +87,7 @@ interface OkxResponse<T> {
   data: T;
 }
 
-async function okxFetch<T>(
+export async function okxFetch<T>(
   path: string,
   params: Record<string, string> = {},
   baseUrl: string = OKX_BASE,

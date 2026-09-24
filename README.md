@@ -75,6 +75,17 @@ without them.
 
 Script, chat and the Vela workspace state persist in `localStorage`.
 
+### Derivatives data in scripts
+
+Perpetual funding rates and open interest are available to Pine/backtest scripts
+as synthetic tickers via `request.security` (forward-filled onto the chart
+timeframe, cached locally):
+
+```pine
+fund = request.security("OKX:BTC-USDT-SWAP$FUND", timeframe.period, close)  // rate fraction
+oi   = request.security("OKX:BTC-USDT-SWAP$OI",   timeframe.period, close)  // contracts
+```
+
 ## Architecture
 
 ```
