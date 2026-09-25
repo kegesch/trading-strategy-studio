@@ -7,10 +7,19 @@ import { getHistory } from '../okx/history'
 import { normalizeTimeframe } from '../okx/fetch'
 import { toOkxInstId } from '../okx/provider-vela'
 import { TIMEFRAME_SECONDS } from 'pinets'
-import { setBacktest, useStudio } from '../studio/store'
+import { setBacktest, getChartScriptTrades, useStudio } from '../studio/store'
+import { lastEngineMode } from '../vela/pineEngine'
 
 const fmt = (v: number | undefined, digits = 2) =>
   v == null || Number.isNaN(v) ? '—' : v.toFixed(digits)
+
+/** Compact UTC timestamp for trade fill times (epoch ms). */
+const fmtTime = (v: number | undefined) => {
+  if (v == null || Number.isNaN(v)) return '—'
+  const d = new Date(v)
+  const p = (n: number) => String(n).padStart(2, '0')
+  return `${d.getUTCFullYear()}-${p(d.getUTCMonth() + 1)}-${p(d.getUTCDate())} ${p(d.getUTCHours())}:${p(d.getUTCMinutes())}`
+}
 
 function Metric({ label, value, tone }: { label: string; value: string; tone?: 'pos' | 'neg' }) {
   return (
@@ -116,6 +125,7 @@ export default function BacktestPane({ script }: { script: string }) {
   const [bars, setBars] = useState(1000)
   const [running, setRunning] = useState(false)
   const [error, setError] = useState<string | null>(null)
+  const [chartNote, setChartNote] = useState<string | null>(null)
   const [view, setView] = useState<'full' | 'isoos'>('full')
   const [downloadNote, setDownloadNote] = useState<string | null>(null)
 
@@ -139,9 +149,24 @@ export default function BacktestPane({ script }: { script: string }) {
     try {
       const result = await runBacktest({ ticker: symbol, timeframe, limit: bars, script })
       setBacktest(result, 'user')
+      // The chart re-runs the script over the synced depth; report what its
+      // engine session actually computed (drives the on-chart trade markers).
+      const closed_ = result.strategy?.closedtrades?.length ?? 0
+      setChartNote('Chart session: checking…')
+      getChartScriptTrades().then((chartTrades) => {
+        const mode = lastEngineMode()
+        setChartNote(
+          chartTrades === 'missing'
+            ? 'Chart session: script not on chart'
+            : chartTrades === 'pending'
+              ? 'Chart session: no result yet (still loading?)'
+              : `Chart session (${mode} mode): ${chartTrades} trade${chartTrades === 1 ? '' : 's'}` +
+                  (chartTrades === 0 && closed_ > 0 ? ' (backtest had ' + closed_ + ')' : ''),
+        )
+      })
     } catch (e) {
       setError(e instanceof Error ? e.message : String(e))
-      setBacktest({ strategy: null, runMs: 0, isOos: null }, 'user')
+      setBacktest({ strategy: null, runMs: 0, isOos: null, ticker: symbol, timeframe, bars }, 'user')
     } finally {
       setRunning(false)
     }
@@ -202,6 +227,12 @@ export default function BacktestPane({ script }: { script: string }) {
         </p>
       )}
 
+      {chartNote && (
+        <p className="mt-2 text-[10px] text-amber-400/80" title="Trades reported by the chart's own engine session (drives the on-chart markers)">
+          {chartNote}
+        </p>
+      )}
+
       {result && !error && (
         <>
           <p className="mt-2 text-[10px] text-slate-600">
@@ -232,7 +263,9 @@ export default function BacktestPane({ script }: { script: string }) {
                   <thead>
                     <tr className="text-slate-600">
                       <th className="py-1 pr-2 font-normal">#</th>
+                      <th className="py-1 pr-2 font-normal">Entry time</th>
                       <th className="py-1 pr-2 font-normal">Entry</th>
+                      <th className="py-1 pr-2 font-normal">Exit time</th>
                       <th className="py-1 pr-2 font-normal">Exit</th>
                       <th className="py-1 pr-2 font-normal">Size</th>
                       <th className="py-1 text-right font-normal">P&L</th>
@@ -244,7 +277,9 @@ export default function BacktestPane({ script }: { script: string }) {
                       return (
                         <tr key={t.id ?? i} className="border-t border-[#1a2332]">
                           <td className="py-0.5 pr-2 text-slate-600">{i + 1}</td>
+                          <td className="py-0.5 pr-2 text-slate-500">{fmtTime(t.entry_time)}</td>
                           <td className="py-0.5 pr-2">{fmt(t.entry_price, 1)}</td>
+                          <td className="py-0.5 pr-2 text-slate-500">{fmtTime(t.exit_time)}</td>
                           <td className="py-0.5 pr-2">{fmt(t.exit_price, 1)}</td>
                           <td className="py-0.5 pr-2 text-slate-500">{fmt(t.size, 4)}</td>
                           <td className={`py-0.5 text-right ${profit >= 0 ? 'text-emerald-400' : 'text-rose-400'}`}>

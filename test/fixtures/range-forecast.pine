@@ -1,0 +1,109 @@
+//@version=5
+strategy("Range Forecast - Predict, then Trade", overlay = true, initial_capital = 10000, currency = currency.EUR, pyramiding = 0, process_orders_on_close = false, commission_type = strategy.commission.percent, commission_value = 0.05, slippage = 1)
+
+// --- Inputs ---
+rangeLen       = input.int(48, "Range length", minval = 20, maxval = 200)
+forecastLen    = input.int(8, "Forecast lookback", minval = 2, maxval = 48)
+squeezeLen     = input.int(24, "Squeeze lookback", minval = 5, maxval = 100)
+forecastLife   = input.int(8, "Forecast expiry bars", minval = 1, maxval = 50)
+breakoutBuffer = input.float(0.10, "Breakout buffer ATR", minval = 0.0, maxval = 2.0, step = 0.05)
+stopDepth      = input.float(0.35, "Stop inside range", minval = 0.05, maxval = 0.80, step = 0.05)
+targetMultiple = input.float(1.50, "Target range multiple", minval = 0.25, maxval = 4.0, step = 0.10)
+threshold      = input.float(0.35, "Forecast threshold", minval = 0.05, maxval = 1.0, step = 0.05)
+maxCompression = input.float(0.35, "Maximum ATR/range", minval = 0.02, maxval = 1.0, step = 0.02)
+minAtrRatio    = input.float(0.01, "Minimum ATR/range", minval = 0.0, maxval = 1.0, step = 0.01)
+riskPct        = input.float(0.50, "Risk per trade (%)", minval = 0.05, maxval = 3.0, step = 0.05)
+maxNotionalPct = input.float(100.0, "Maximum notional (%)", minval = 5.0, maxval = 500.0, step = 5.0)
+maxHoldBars    = input.int(20, "Maximum hold bars", minval = 2, maxval = 200)
+cooldownBars   = input.int(4, "Cooldown bars", minval = 0, maxval = 50)
+minRewardRisk  = input.float(1.20, "Minimum reward/risk", minval = 0.5, maxval = 5.0, step = 0.1)
+
+// --- Frozen completed-bar range and forecast features ---
+atr      = ta.atr(14)
+rangeHi  = ta.highest(high[1], rangeLen)
+rangeLo  = ta.lowest(low[1], rangeLen)
+width    = rangeHi - rangeLo
+safeW    = math.max(width, syminfo.mintick)
+mid      = (rangeHi + rangeLo) * 0.5
+edgePos  = math.max(0.0, math.min(1.0, (close - rangeLo) / safeW))
+edgeScore = (edgePos - 0.50) * 2.0
+
+moveAtr   = math.max(forecastLen * atr[1], syminfo.mintick)
+moveScore = math.max(-1.0, math.min(1.0, (close - close[forecastLen]) / moveAtr))
+forecastScore = 0.60 * edgeScore + 0.40 * moveScore
+
+avgAtr      = ta.sma(atr, squeezeLen)
+compression = avgAtr / safeW
+atrRatio    = atr[1] / safeW
+rangeValid  = width > 0 and close >= rangeLo and close <= rangeHi and atrRatio >= minAtrRatio and compression <= maxCompression
+
+predictLong  = rangeValid and forecastScore >= threshold and edgePos >= 0.55
+predictShort = rangeValid and forecastScore <= -threshold and edgePos <= 0.45
+
+// --- Planned entry, stop, and target ---
+entryBuffer  = atr[1] * breakoutBuffer
+longEntry    = rangeHi + entryBuffer
+shortEntry   = rangeLo - entryBuffer
+longStop     = rangeHi - width * stopDepth
+shortStop    = rangeLo + width * stopDepth
+longTarget   = rangeHi + width * targetMultiple
+shortTarget  = rangeLo - width * targetMultiple
+longRisk     = math.max(longEntry - longStop, syminfo.mintick)
+shortRisk    = math.max(shortStop - shortEntry, syminfo.mintick)
+longRR       = (longTarget - longEntry) / longRisk
+shortRR      = (shortEntry - shortTarget) / shortRisk
+
+riskCash    = strategy.equity * riskPct / 100.0
+notionalQty = strategy.equity * maxNotionalPct / 100.0 / math.max(close, syminfo.mintick)
+longQty     = math.min(riskCash / longRisk, notionalQty)
+shortQty    = math.min(riskCash / shortRisk, notionalQty)
+canLong     = predictLong and longRR >= minRewardRisk and longQty > 0
+canShort    = predictShort and shortRR >= minRewardRisk and shortQty > 0
+
+// --- Manage a single forecast and a single position ---
+var int forecastDir = 0
+var int forecastBar = na
+var int positionBar = na
+var int lastClosedCount = 0
+var int lastExitBar = na
+prevPosition = strategy.position_size
+
+if strategy.position_size != 0
+    forecastDir := 0
+    if prevPosition == 0 or na(positionBar)
+        positionBar := bar_index
+    if bar_index - positionBar >= maxHoldBars
+        strategy.close_all(comment = "Time exit - prediction wrong")
+
+if strategy.position_size == 0
+    if strategy.closedtrades > lastClosedCount
+        lastClosedCount := strategy.closedtrades
+        lastExitBar := bar_index
+
+    cooledDown = na(lastExitBar) or bar_index - lastExitBar > cooldownBars
+    if forecastDir != 0
+        age = bar_index - forecastBar
+        opposite = forecastDir == 1 ? predictShort : predictLong
+        invalid = forecastDir == 1 ? close < longEntry - math.max(atr[1], syminfo.mintick) : close > shortEntry + math.max(atr[1], syminfo.mintick)
+        if age >= forecastLife or opposite or invalid
+            strategy.cancel_all()
+            forecastDir := 0
+    else if cooledDown
+        if canLong
+            forecastDir := 1
+            forecastBar := bar_index
+            strategy.entry("Long", strategy.long, qty = longQty, stop = longEntry, comment = "Predicted range expansion long")
+            strategy.exit("Long risk", "Long", stop = longStop, limit = longTarget)
+        else if canShort
+            forecastDir := -1
+            forecastBar := bar_index
+            strategy.entry("Short", strategy.short, qty = shortQty, stop = shortEntry, comment = "Predicted range expansion short")
+            strategy.exit("Short risk", "Short", stop = shortStop, limit = shortTarget)
+
+// --- Chart output ---
+plot(rangeHi, "Prior range high", color.new(color.blue, 30))
+plot(rangeLo, "Prior range low", color.new(color.blue, 30))
+plot(mid, "Range midpoint", color.new(color.gray, 30), 1)
+plot(predictLong and barstate.isconfirmed ? longEntry : predictShort and barstate.isconfirmed ? shortEntry : na, "Predicted expansion trigger", color.yellow, plot.style_stepline, 2)
+plotshape(predictLong and barstate.isconfirmed, "Long prediction", shape.triangleup, location.belowbar, color.lime)
+plotshape(predictShort and barstate.isconfirmed, "Short prediction", shape.triangledown, location.abovebar, color.red)

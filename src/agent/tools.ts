@@ -190,7 +190,7 @@ async function runBacktestTool(args: Record<string, unknown>): Promise<unknown> 
     script: source,
   })
   // Share the raw run with the UI so the Backtest pane shows agent results too.
-  setBacktest({ strategy, runMs, isOos }, 'agent')
+  setBacktest({ strategy, runMs, isOos, ticker, timeframe: tf, bars: limit }, 'agent')
   if (!strategy) {
     return {
       ticker,

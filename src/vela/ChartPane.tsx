@@ -1,10 +1,10 @@
 import { useEffect, useRef, useState } from 'react'
 import { VelaWorkspace } from '@luxalgo/vela/workspace'
-import { PineWorkerEngine } from '@luxalgo/vela-pinets'
 
 import { OkxVelaProvider, OKX_PROVIDER_NAME } from '../okx/provider-vela'
 import { normalizeTimeframe } from '../okx/fetch'
 import { setStudio } from '../studio/store'
+import { createPineEngine } from './pineEngine'
 
 const EMA_INDICATOR = {
   name: 'EMA 20',
@@ -31,8 +31,11 @@ export default function ChartPane() {
         layout: false,
         symbol: 'BTC-USDT',
         timeframe: '60',
+        // Match the BacktestPane default so chart runs cover the same window
+        // (and render the same trade markers) as a fresh backtest.
+        bars: 1000,
         providers: { [OKX_PROVIDER_NAME]: () => new OkxVelaProvider() },
-        engines: { pine: () => new PineWorkerEngine() },
+        engines: { pine: createPineEngine },
         indicators: [EMA_INDICATOR],
         live: true,
         theme: 'dark',

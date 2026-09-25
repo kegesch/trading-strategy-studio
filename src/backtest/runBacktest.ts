@@ -35,6 +35,11 @@ export interface BacktestResult {
   runMs: number
   /** IS/OOS decomposition of the run (null for indicators / no closed trades). */
   isOos: IsOosResult | null
+  /** Market the run executed on, so the chart can mirror the same window. */
+  ticker: string
+  timeframe: string
+  /** Bar count the run loaded (chart depth is synced to this on publish). */
+  bars: number
 }
 
 const defaultProvider = new OkxPinetsProvider()
@@ -57,5 +62,12 @@ export async function runBacktest(params: BacktestParams): Promise<BacktestResul
   const context = await pine.run(fills ? applyRealisticFills(params.script, fills) : params.script)
   const strategy = context.strategy ?? null
   const isOos = strategy ? computeIsOos(strategy, params.isOosSplit) : null
-  return { strategy, runMs: performance.now() - started, isOos }
+  return {
+    strategy,
+    runMs: performance.now() - started,
+    isOos,
+    ticker: params.ticker,
+    timeframe,
+    bars: params.limit,
+  }
 }

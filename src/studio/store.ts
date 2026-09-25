@@ -49,6 +49,24 @@ export function useStudio(): StudioState {
 /** Publish a backtest result so the pane shows it regardless of who ran it. */
 export function setBacktest(result: BacktestResult, source: BacktestSource) {
   setStudio({ backtest: result, backtestSource: source })
+  syncChartDepth(result)
+}
+
+/**
+ * Load the chart over the same bar depth the backtest ran on, so the chart's
+ * own engine run produces the same trades (rendered natively as markers).
+ * Skipped when the run was on a different market than the chart shows, or the
+ * run failed (no strategy report).
+ */
+function syncChartDepth(result: BacktestResult) {
+  const { ws, symbol, timeframe } = getStudio()
+  if (!ws || !result.strategy) return
+  if (result.ticker !== symbol || result.timeframe !== timeframe) return
+  try {
+    void ws.active.chart.setMarket({ bars: result.bars })
+  } catch {
+    // chart gone mid-edit
+  }
 }
 
 /** Surface an unhandled error in the UI banner. */
@@ -99,6 +117,38 @@ export function runScriptOnChart(script: string): string | null {
     return null
   } catch (e) {
     return e instanceof Error ? e.message : String(e)
+  }
+}
+
+/**
+ * Trade markers visible on the chart come from the chart's OWN engine run.
+ * This reads how many trades that session currently reports.
+ * - `'missing'`: the script indicator isn't on the chart
+ * - `'pending'`: the session hasn't produced a context yet (still loading /
+ *   re-running — retry later)
+ */
+export async function getChartScriptTrades(
+  timeoutMs = 20000,
+): Promise<number | 'missing' | 'pending'> {
+  const { ws } = getStudio()
+  if (!ws) return 'missing'
+  const deadline = Date.now() + timeoutMs
+  for (;;) {
+    let handleExists = false
+    try {
+      const handle = ws.active.chart
+        .indicators()
+        .find((h) => h.id === SCRIPT_INDICATOR_ID)
+      if (!handle) return 'missing'
+      handleExists = true
+      const ctx = await handle.context(['trades'])
+      const trades = (ctx as { trades?: unknown[] } | null)?.trades
+      if (Array.isArray(trades)) return trades.length
+    } catch {
+      if (!handleExists) return 'missing'
+    }
+    if (Date.now() >= deadline) return 'pending'
+    await new Promise((r) => setTimeout(r, 1500))
   }
 }
 
