@@ -132,6 +132,37 @@ export const AGENT_TOOLS: ToolDef[] = [
   {
     type: 'function',
     function: {
+      name: 'find_signal_bars',
+      description:
+        'Run the Pine script and list every candle where a script variable/condition is true (or equals a given value), e.g. a signal flag like isSignal or predictLong. Returns bar timestamps and values so you can correlate signals with price action.',
+      parameters: {
+        type: 'object',
+        properties: {
+          variable: {
+            type: 'string',
+            description: 'Name of a script variable or condition (e.g. "isSignal", "predictLong")',
+          },
+          equals: {
+            type: 'number',
+            description: 'Only match bars where the variable equals this value (numeric variables). Omit to match truthy (non-zero, non-na) values.',
+          },
+          lastN: { type: 'number', description: 'Only consider the last N bars (default: all loaded)' },
+          limit: { type: 'number', description: 'Max matches returned, most recent first (default 50)' },
+          ticker: { type: 'string', description: 'Defaults to chart symbol' },
+          timeframe: { type: 'string', description: 'Defaults to chart timeframe' },
+          bars: { type: 'number', description: 'Candles to load, max 3000 (default 300)' },
+          source: {
+            type: 'string',
+            description: 'Pine source; defaults to the current editor script',
+          },
+        },
+        required: ['variable'],
+      },
+    },
+  },
+  {
+    type: 'function',
+    function: {
       name: 'inspect_bar',
       description:
         'Run the Pine script and dump the value of every script variable at ONE candle (plus that candle\'s OHLCV). Use to debug why a signal fired or not: check thresholds, flags, computed series at the bar of interest.',
@@ -454,6 +485,109 @@ async function inspectBarTool(args: Record<string, unknown>): Promise<unknown> {
   }
 }
 
+async function findSignalBarsTool(args: Record<string, unknown>): Promise<unknown> {
+  const { symbol, timeframe } = getStudio()
+  const ticker = typeof args.ticker === 'string' && args.ticker ? args.ticker : symbol
+  const tf = typeof args.timeframe === 'string' && args.timeframe ? args.timeframe : timeframe
+  const limit = Math.min(Math.max(Number(args.bars) || 300, 50), 3000)
+  const source =
+    typeof args.source === 'string' && args.source
+      ? args.source
+      : getEditorBridge()?.getScript()
+  if (!source) return { error: 'No script available' }
+  const name = typeof args.variable === 'string' ? args.variable.trim() : ''
+  if (!name) return { error: 'Provide a variable name' }
+
+  let context: Awaited<ReturnType<typeof runScriptContext>>
+  try {
+    context = await runScriptContext({
+      ticker,
+      timeframe: tf,
+      limit,
+      script: source,
+      provider: inspectProvider,
+    })
+  } catch (e) {
+    return { error: e instanceof Error ? e.message : String(e) }
+  }
+
+  const ctx = context as unknown as Record<string, unknown>
+  const data = (context as unknown as {
+    data: Record<string, { data?: unknown[] }>
+  }).data
+  const opens = data?.openTime?.data ?? []
+  const closes = data?.close?.data ?? []
+  if (opens.length === 0) return { error: 'Run produced no data' }
+
+  // Resolve the variable across namespaces (suffix namespaces win).
+  let series: unknown[] | null = null
+  for (const ns of ['params', 'const', 'var', 'let'] as const) {
+    const holder = ctx[ns] as Record<string, unknown> | undefined
+    if (holder == null || typeof holder !== 'object') continue
+    for (const [key, entry] of Object.entries(holder)) {
+      if (key.startsWith('_')) continue
+      if (key.replace(/^glb\d+_/, '') !== name) continue
+      const arr = (entry as { data?: unknown } | null)?.data
+      if (Array.isArray(arr)) series = arr
+    }
+  }
+  if (!series) {
+    const available = new Set<string>()
+    for (const ns of ['params', 'const', 'var', 'let'] as const) {
+      const holder = ctx[ns] as Record<string, unknown> | undefined
+      if (holder == null || typeof holder !== 'object') continue
+      for (const key of Object.keys(holder)) {
+        if (!key.startsWith('_')) available.add(key.replace(/^glb\d+_/, ''))
+      }
+    }
+    return {
+      error: `Variable "${name}" not found or not a series`,
+      availableVariables: [...available].slice(0, 100),
+    }
+  }
+
+  const equals =
+    typeof args.equals === 'number' && Number.isFinite(args.equals)
+      ? args.equals
+      : undefined
+  const lastN = Math.max(Math.trunc(Number(args.lastN) || opens.length), 1)
+  const maxResults = Math.min(Math.max(Math.trunc(Number(args.limit) || 50), 1), 200)
+
+  const start = Math.max(opens.length - lastN, 0)
+  const matches: { time: number; value: unknown; close: number }[] = []
+  let total = 0
+  for (let i = start; i < opens.length; i++) {
+    const raw = series[i]
+    if (raw == null) continue
+    const hit =
+      equals !== undefined
+        ? typeof raw === 'number' && Math.abs(raw - equals) < 1e-9
+        : raw === true || (typeof raw === 'number' && raw !== 0 && Number.isFinite(raw))
+    if (!hit) continue
+    total += 1
+    if (matches.length < maxResults) {
+      matches.push({
+        time: Number(opens[i]),
+        value: typeof raw === 'number' ? round(raw, 6) : raw,
+        close: typeof closes[i] === 'number' ? round(closes[i] as number) : null,
+      })
+    }
+  }
+
+  return {
+    ticker,
+    timeframe: tf,
+    variable: name,
+    barsLoaded: opens.length,
+    scannedBars: opens.length - start,
+    matches: matches.reverse(), // most recent first
+    total,
+    truncated: total > matches.length,
+    note:
+      'Times are bar open-times (epoch ms). Use inspect_bar with one of these timestamps to dump all variable values at a signal bar.',
+  }
+}
+
 /** Execute a tool call by name; returns a JSON-serializable result. */
 export async function executeTool(name: string, argsJson: string): Promise<unknown> {
   let args: Record<string, unknown> = {}
@@ -571,6 +705,8 @@ export async function executeTool(name: string, argsJson: string): Promise<unkno
       return sweepParamsTool(args)
     case 'inspect_bar':
       return inspectBarTool(args)
+    case 'find_signal_bars':
+      return findSignalBarsTool(args)
     default:
       return { error: `Unknown tool: ${name}` }
   }

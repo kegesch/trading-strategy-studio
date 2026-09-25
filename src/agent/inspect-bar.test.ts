@@ -88,4 +88,34 @@ describe('inspect_bar tool', () => {
     }))) as Record<string, unknown>
     expect(String(bad.error)).toMatch(/barsBack/)
   })
+
+  it('finds bars where a condition is true', async () => {
+    setInspectProvider(new FixtureProvider())
+    const script = `//@version=5
+indicator("sig")
+up = close > open
+plot(up ? 1 : 0)
+`
+    const result = (await executeTool('find_signal_bars', JSON.stringify({
+      source: script, ticker: 'BTC-USDT', timeframe: '60', bars: 100, variable: 'up',
+    }))) as Record<string, unknown>
+    expect(result.error).toBeUndefined()
+    const matches = result.matches as { time: number; value: boolean; close: number }[]
+    // Fixture closes are base + (i % 3) - 1 vs open = base: true when i%3 >= 1.
+    expect(result.total).toBeGreaterThan(0)
+    expect(matches.length).toBeGreaterThan(0)
+    for (const m of matches) expect(m.value).toBe(true)
+
+    const limited = (await executeTool('find_signal_bars', JSON.stringify({
+      source: script, ticker: 'BTC-USDT', timeframe: '60', bars: 100, variable: 'up', limit: 3,
+    }))) as Record<string, unknown>
+    expect((limited.matches as unknown[]).length).toBe(3)
+    expect(limited.truncated).toBe(true)
+
+    const missing = (await executeTool('find_signal_bars', JSON.stringify({
+      source: script, ticker: 'BTC-USDT', timeframe: '60', bars: 100, variable: 'nope',
+    }))) as Record<string, unknown>
+    expect(String(missing.error)).toMatch(/not found/)
+    expect(Array.isArray(missing.availableVariables)).toBe(true)
+  })
 })
