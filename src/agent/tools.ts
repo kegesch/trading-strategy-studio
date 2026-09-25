@@ -1,6 +1,7 @@
 import type { ToolDef } from '../llm/client'
 import type { IProvider } from 'pinets'
 import { runBacktest, runScriptContext } from '../backtest/runBacktest'
+import { okxFills, totalSlippageTicks } from '../backtest/fills'
 import { runSweep, MAX_SWEEP_COMBOS } from '../backtest/sweep'
 import { fetchCandles } from '../okx/fetch'
 import { toOkxInstId } from '../okx/provider-vela'
@@ -91,6 +92,16 @@ export const AGENT_TOOLS: ToolDef[] = [
           source: {
             type: 'string',
             description: 'Pine strategy source; defaults to the current editor script',
+          },
+          feeTier: {
+            type: 'string',
+            enum: ['regular', 'vip2', 'vip3'],
+            description: 'OKX fee tier for commission (default regular)',
+          },
+          fillStyle: {
+            type: 'string',
+            enum: ['taker', 'maker'],
+            description: "Book side assumed for fills; keep 'taker' unless the strategy truly rests limit orders (default taker)",
           },
         },
       },
@@ -250,15 +261,20 @@ async function runBacktestTool(args: Record<string, unknown>): Promise<unknown> 
       ? args.source
       : getEditorBridge()?.getScript()
   if (!source) return { error: 'No script available' }
+  const feeTier =
+    args.feeTier === 'vip2' || args.feeTier === 'vip3' ? args.feeTier : 'regular'
+  const fillStyle = args.fillStyle === 'maker' ? 'maker' : 'taker'
+  const fills = okxFills(ticker, feeTier, fillStyle)
 
-  const { strategy, runMs, isOos } = await runBacktest({
+  const { strategy, runMs, isOos, fills: appliedFills } = await runBacktest({
     ticker,
     timeframe: tf,
     limit,
     script: source,
+    fills,
   })
   // Share the raw run with the UI so the Backtest pane shows agent results too.
-  setBacktest({ strategy, runMs, isOos, ticker, timeframe: tf, bars: limit }, 'agent')
+  setBacktest({ strategy, runMs, isOos, ticker, timeframe: tf, bars: limit, fills: appliedFills }, 'agent')
   if (!strategy) {
     return {
       ticker,
@@ -276,6 +292,14 @@ async function runBacktestTool(args: Record<string, unknown>): Promise<unknown> 
     bars: limit,
     isStrategy: true,
     runMs: Math.round(runMs),
+    fills: appliedFills
+      ? {
+          tier: appliedFills.tier,
+          fillStyle: appliedFills.fillStyle,
+          commissionPct: appliedFills.commissionPct,
+          slippageTicks: totalSlippageTicks(appliedFills),
+        }
+      : null,
     metrics: {
       initialCapital: strategy.initial_capital,
       equity: round(strategy.equity),

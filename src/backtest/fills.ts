@@ -12,26 +12,60 @@ export interface FillsConfig {
   commissionPct: number
   /** Slippage per fill in whole ticks. */
   slippageTicks: number
+  /** Half-spread in ticks added to slippage — cost of crossing the book (default 0). */
+  spreadTicks?: number
+  /** OKX fee-tier label the rates came from (default 'regular'). */
+  tier?: FeeTier
+  /** Book side the strategy assumes for its fills (default 'taker'). */
+  fillStyle?: 'taker' | 'maker'
 }
 
+export type FeeTier = 'regular' | 'vip2' | 'vip3'
+
 /**
- * OKX regular-user (LV1) taker fee tiers, percent per fill. Backtest fills
- * are market-on-close style, so the taker rate is the honest assumption.
- * Spot: 0.1% taker. Perps/futures: 0.05% taker.
+ * OKX fee tiers, percent per fill (taker / maker). Backtest fills are
+ * market-on-close style by default, so `taker` is the honest assumption;
+ * strategies that genuinely rest limit orders can opt into `maker` rates
+ * (they then give up the spread, which is why maker spread defaults to 0
+ * but slippage still applies).
  */
-export const OKX_SPOT_TAKER_PCT = 0.1
-export const OKX_SWAP_TAKER_PCT = 0.05
+export const OKX_FEE_TIERS: Record<FeeTier, { spot: { taker: number; maker: number }; swap: { taker: number; maker: number } }> = {
+  // Lv1 regular users.
+  regular: { spot: { taker: 0.1, maker: 0.08 }, swap: { taker: 0.05, maker: 0.02 } },
+  // Lv2 / Lv3 VIP users.
+  vip2: { spot: { taker: 0.09, maker: 0.065 }, swap: { taker: 0.045, maker: 0.015 } },
+  vip3: { spot: { taker: 0.08, maker: 0.05 }, swap: { taker: 0.04, maker: 0.012 } },
+}
+
 /** One tick of slippage per fill — conservative for liquid majors on OKX. */
 export const DEFAULT_SLIPPAGE_TICKS = 1
 
-/** OKX taker-fee defaults for a ticker; derivatives pay the swap tier. */
-export function okxDefaultFills(ticker: string): FillsConfig {
+/** Total ticks a fill is displaced: execution slippage plus half-spread. */
+export function totalSlippageTicks(fills: FillsConfig): number {
+  return fills.slippageTicks + (fills.spreadTicks ?? 0)
+}
+
+/** Fills config for a ticker at a given fee tier and book side. */
+export function okxFills(
+  ticker: string,
+  tier: FeeTier = 'regular',
+  fillStyle: 'taker' | 'maker' = 'taker',
+): FillsConfig {
   const instId = toOkxInstId(ticker)
   const isDerivative = instId.endsWith('-SWAP') || instId.includes('-FUTURES')
+  const schedule = isDerivative ? OKX_FEE_TIERS[tier].swap : OKX_FEE_TIERS[tier].spot
   return {
-    commissionPct: isDerivative ? OKX_SWAP_TAKER_PCT : OKX_SPOT_TAKER_PCT,
+    commissionPct: schedule[fillStyle],
     slippageTicks: DEFAULT_SLIPPAGE_TICKS,
+    spreadTicks: 0,
+    tier,
+    fillStyle,
   }
+}
+
+/** OKX regular-tier taker defaults for a ticker; derivatives pay the swap tier. */
+export function okxDefaultFills(ticker: string): FillsConfig {
+  return okxFills(ticker)
 }
 
 /**
@@ -56,7 +90,8 @@ export function applyRealisticFills(script: string, fills: FillsConfig): string 
     args = appendArg(args, `commission_type="percent", commission_value=${fills.commissionPct}`)
   }
   if (!respectsSlippage) {
-    args = appendArg(args, `slippage=${fills.slippageTicks}`)
+    // Execution slippage + half-spread, both in whole ticks from mid.
+    args = appendArg(args, `slippage=${totalSlippageTicks(fills)}`)
   }
   return script.slice(0, decl.argsStart) + args + script.slice(decl.argsEnd)
 }

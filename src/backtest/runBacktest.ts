@@ -40,6 +40,8 @@ export interface BacktestResult {
   timeframe: string
   /** Bar count the run loaded (chart depth is synced to this on publish). */
   bars: number
+  /** Fill-cost model actually applied (null when fills are disabled). */
+  fills: FillsConfig | null
 }
 
 const defaultProvider = new OkxPinetsProvider()
@@ -93,5 +95,6 @@ export async function runBacktest(params: BacktestParams): Promise<BacktestResul
     ticker: params.ticker,
     timeframe,
     bars: params.limit,
+    fills,
   }
 }

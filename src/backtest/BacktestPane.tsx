@@ -1,6 +1,7 @@
 import { useMemo, useState } from 'react'
 
 import { runBacktest, type BacktestResult } from '../backtest/runBacktest'
+import { okxFills, type FeeTier } from '../backtest/fills'
 import type { IsOosResult, TradeMetrics } from '../backtest/isOos'
 import SweepPanel from '../backtest/SweepPanel'
 import { getHistory } from '../okx/history'
@@ -128,6 +129,8 @@ export default function BacktestPane({ script }: { script: string }) {
   const [chartNote, setChartNote] = useState<string | null>(null)
   const [view, setView] = useState<'full' | 'isoos'>('full')
   const [downloadNote, setDownloadNote] = useState<string | null>(null)
+  const [feeTier, setFeeTier] = useState<FeeTier>('regular')
+  const [fillStyle, setFillStyle] = useState<'taker' | 'maker'>('taker')
 
   const downloadHistory = async () => {
     setDownloadNote('Downloading…')
@@ -147,7 +150,13 @@ export default function BacktestPane({ script }: { script: string }) {
     setRunning(true)
     setError(null)
     try {
-      const result = await runBacktest({ ticker: symbol, timeframe, limit: bars, script })
+      const result = await runBacktest({
+        ticker: symbol,
+        timeframe,
+        limit: bars,
+        script,
+        fills: okxFills(symbol, feeTier, fillStyle),
+      })
       setBacktest(result, 'user')
       // The chart re-runs the script over the synced depth; report what its
       // engine session actually computed (drives the on-chart trade markers).
@@ -166,7 +175,7 @@ export default function BacktestPane({ script }: { script: string }) {
       })
     } catch (e) {
       setError(e instanceof Error ? e.message : String(e))
-      setBacktest({ strategy: null, runMs: 0, isOos: null, ticker: symbol, timeframe, bars }, 'user')
+      setBacktest({ strategy: null, runMs: 0, isOos: null, ticker: symbol, timeframe, bars, fills: null }, 'user')
     } finally {
       setRunning(false)
     }
@@ -191,6 +200,27 @@ export default function BacktestPane({ script }: { script: string }) {
           aria-label="Bars to backtest"
         />
         <span className="text-[11px] text-slate-500">bars</span>
+        <select
+          value={feeTier}
+          onChange={(e) => setFeeTier(e.target.value as FeeTier)}
+          className="rounded border border-[#232d3d] bg-[#0f1520] px-2 py-1 text-[11px]"
+          aria-label="Fee tier"
+          title="OKX fee tier used for commission"
+        >
+          <option value="regular">Regular fees</option>
+          <option value="vip2">VIP2</option>
+          <option value="vip3">VIP3</option>
+        </select>
+        <select
+          value={fillStyle}
+          onChange={(e) => setFillStyle(e.target.value as 'taker' | 'maker')}
+          className="rounded border border-[#232d3d] bg-[#0f1520] px-2 py-1 text-[11px]"
+          aria-label="Fill style"
+          title="Taker = market fills (honest default); maker = resting limit fills at maker rates"
+        >
+          <option value="taker">Taker</option>
+          <option value="maker">Maker</option>
+        </select>
         <button
           onClick={downloadHistory}
           title="Download up to 20k bars into the local cache"
@@ -237,6 +267,11 @@ export default function BacktestPane({ script }: { script: string }) {
         <>
           <p className="mt-2 text-[10px] text-slate-600">
             {symbol} · {timeframe} · {result.runMs.toFixed(0)}ms
+            {result.fills && (
+              <span className="ml-2 text-slate-500">
+                · {result.fills.tier ?? 'regular'} {result.fills.fillStyle ?? 'taker'} {result.fills.commissionPct}% +{result.fills.slippageTicks + (result.fills.spreadTicks ?? 0)} tick
+              </span>
+            )}
             {backtestSource === 'agent' && (
               <span className="ml-2 rounded bg-sky-950 px-1.5 py-0.5 text-[9px] uppercase tracking-wider text-sky-400">
                 from agent
