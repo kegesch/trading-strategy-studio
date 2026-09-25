@@ -44,12 +44,20 @@ export interface BacktestResult {
 
 const defaultProvider = new OkxPinetsProvider()
 
+/** Params for a raw script run (no fill model, full context access). */
+export interface ScriptRunParams {
+  ticker: string
+  timeframe: string
+  limit: number
+  script: string
+  provider?: IProvider
+}
+
 /**
- * Run the edited Pine script over OKX candles via the standalone pinets
- * runtime and return the full `strategy` report (null for indicators).
+ * Run a Pine script over OKX candles via the standalone pinets runtime and
+ * return the raw run context (variables, plots, strategy report).
  */
-export async function runBacktest(params: BacktestParams): Promise<BacktestResult> {
-  const started = performance.now()
+export async function runScriptContext(params: ScriptRunParams): Promise<Context> {
   const timeframe = normalizeTimeframe(params.timeframe)
   const pine = new PineTS(
     params.provider ?? defaultProvider,
@@ -57,9 +65,25 @@ export async function runBacktest(params: BacktestParams): Promise<BacktestResul
     timeframe,
     params.limit,
   )
+  return pine.run(params.script)
+}
+
+/**
+ * Run the edited Pine script over OKX candles via the standalone pinets
+ * runtime and return the full `strategy` report (null for indicators).
+ */
+export async function runBacktest(params: BacktestParams): Promise<BacktestResult> {
+  const started = performance.now()
+  const timeframe = normalizeTimeframe(params.timeframe)
   const fills =
     params.fills === false ? null : (params.fills ?? okxDefaultFills(params.ticker))
-  const context = await pine.run(fills ? applyRealisticFills(params.script, fills) : params.script)
+  const context = await runScriptContext({
+    ticker: params.ticker,
+    timeframe,
+    limit: params.limit,
+    script: fills ? applyRealisticFills(params.script, fills) : params.script,
+    provider: params.provider,
+  })
   const strategy = context.strategy ?? null
   const isOos = strategy ? computeIsOos(strategy, params.isOosSplit) : null
   return {

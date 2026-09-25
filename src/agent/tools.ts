@@ -1,5 +1,6 @@
 import type { ToolDef } from '../llm/client'
-import { runBacktest } from '../backtest/runBacktest'
+import type { IProvider } from 'pinets'
+import { runBacktest, runScriptContext } from '../backtest/runBacktest'
 import { runSweep, MAX_SWEEP_COMBOS } from '../backtest/sweep'
 import { fetchCandles } from '../okx/fetch'
 import { toOkxInstId } from '../okx/provider-vela'
@@ -128,9 +129,45 @@ export const AGENT_TOOLS: ToolDef[] = [
       },
     },
   },
+  {
+    type: 'function',
+    function: {
+      name: 'inspect_bar',
+      description:
+        'Run the Pine script and dump the value of every script variable at ONE candle (plus that candle\'s OHLCV). Use to debug why a signal fired or not: check thresholds, flags, computed series at the bar of interest.',
+      parameters: {
+        type: 'object',
+        properties: {
+          barsBack: {
+            type: 'number',
+            description: 'Bars back from the last loaded bar (0 = latest bar, default 0)',
+          },
+          timestamp: {
+            type: 'number',
+            description: 'Bar open-time (epoch ms) to inspect instead of barsBack (nearest bar at or before it)',
+          },
+          ticker: { type: 'string', description: 'Defaults to chart symbol' },
+          timeframe: { type: 'string', description: 'Defaults to chart timeframe' },
+          bars: { type: 'number', description: 'Candles to load, max 3000 (default 300). Enough history for the script to warm up before the inspected bar!' },
+          source: {
+            type: 'string',
+            description: 'Pine source; defaults to the current editor script',
+          },
+        },
+      },
+    },
+  },
 ]
 
 const MAX_BARS = 300
+
+/** Provider override for tests (otherwise the OKX provider hits the network). */
+let inspectProvider: IProvider | undefined
+
+/** Test hook: inject a data provider for the inspect_bar tool. */
+export function setInspectProvider(provider: IProvider | undefined) {
+  inspectProvider = provider
+}
 
 function round(n: number, digits = 2): number {
   return Number.isFinite(n) ? Number(n.toFixed(digits)) : n
@@ -312,6 +349,111 @@ async function sweepParamsTool(args: Record<string, unknown>): Promise<unknown> 
   }
 }
 
+/**
+ * A pinets variable/plot entry: either a series `{ data: [...] }` or a scalar.
+ */
+function seriesValue(entry: unknown, idx: number): unknown {
+  if (entry == null || typeof entry !== 'object') return entry
+  const data = (entry as { data?: unknown }).data
+  if (!Array.isArray(data)) return undefined
+  const raw = data[Math.max(0, Math.min(idx, data.length - 1))]
+  if (typeof raw === 'number') return round(raw, 6)
+  if (raw == null) return null
+  if (typeof raw === 'object') return undefined // compound values (lines, labels…) — not inspectable
+  return raw
+}
+
+async function inspectBarTool(args: Record<string, unknown>): Promise<unknown> {
+  const { symbol, timeframe } = getStudio()
+  const ticker = typeof args.ticker === 'string' && args.ticker ? args.ticker : symbol
+  const tf = typeof args.timeframe === 'string' && args.timeframe ? args.timeframe : timeframe
+  const limit = Math.min(Math.max(Number(args.bars) || 300, 50), 3000)
+  const source =
+    typeof args.source === 'string' && args.source
+      ? args.source
+      : getEditorBridge()?.getScript()
+  if (!source) return { error: 'No script available' }
+
+  let context: Awaited<ReturnType<typeof runScriptContext>>
+  try {
+    context = await runScriptContext({
+      ticker,
+      timeframe: tf,
+      limit,
+      script: source,
+      provider: inspectProvider,
+    })
+  } catch (e) {
+    return { error: e instanceof Error ? e.message : String(e) }
+  }
+
+  const data = (context as unknown as {
+    data: Record<string, { data?: unknown[] }>
+  }).data
+  const length = data?.close?.data?.length ?? 0
+  if (length === 0) return { error: 'Run produced no data' }
+
+  // Resolve the inspected bar: timestamp (nearest at/before) or barsBack.
+  let idx = length - 1
+  if (typeof args.timestamp === 'number' && Number.isFinite(args.timestamp)) {
+    const opens = data.openTime?.data ?? []
+    idx = -1
+    for (let i = opens.length - 1; i >= 0; i--) {
+      if (Number(opens[i]) <= args.timestamp) {
+        idx = i
+        break
+      }
+    }
+    if (idx < 0) return { error: 'timestamp is before the first loaded bar — increase bars' }
+  } else if (args.barsBack !== undefined) {
+    const back = Math.trunc(Number(args.barsBack) || 0)
+    if (back < 0) return { error: 'barsBack must be >= 0' }
+    idx = length - 1 - back
+    if (idx < 0) return { error: `barsBack ${back} exceeds loaded history (${length} bars)` }
+  }
+
+  const pick = (ns: unknown): Record<string, unknown> => {
+    const out: Record<string, unknown> = {}
+    if (ns == null || typeof ns !== 'object') return out
+    for (const [key, entry] of Object.entries(ns as Record<string, unknown>)) {
+      if (key.startsWith('_')) continue
+      const value = seriesValue(entry, idx)
+      if (value !== undefined) out[key.replace(/^glb\d+_/, '')] = value
+    }
+    return out
+  }
+  const ctx = context as unknown as Record<string, unknown>
+  const variables = {
+    ...pick(ctx.const),
+    ...pick(ctx.var),
+    ...pick(ctx.let),
+    ...pick(ctx.params),
+  }
+
+  const at = (key: string) => {
+    const v = data[key]?.data?.[idx]
+    return typeof v === 'number' ? round(v, 6) : (v ?? null)
+  }
+
+  return {
+    ticker,
+    timeframe: tf,
+    barIndex: idx,
+    barsLoaded: length,
+    bar: {
+      time: at('openTime'),
+      open: at('open'),
+      high: at('high'),
+      low: at('low'),
+      close: at('close'),
+      volume: at('volume'),
+    },
+    variables,
+    note:
+      'Values are snapshots at the inspected bar. If a signal did not fire, compare these against the conditions in the script.',
+  }
+}
+
 /** Execute a tool call by name; returns a JSON-serializable result. */
 export async function executeTool(name: string, argsJson: string): Promise<unknown> {
   let args: Record<string, unknown> = {}
@@ -427,6 +569,8 @@ export async function executeTool(name: string, argsJson: string): Promise<unkno
       return runBacktestTool(args)
     case 'sweep_params':
       return sweepParamsTool(args)
+    case 'inspect_bar':
+      return inspectBarTool(args)
     default:
       return { error: `Unknown tool: ${name}` }
   }
