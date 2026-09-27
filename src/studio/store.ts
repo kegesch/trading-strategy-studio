@@ -110,7 +110,37 @@ export function runScriptOnChart(script: string): string | null {
       .indicators()
       .find((h) => h.id === SCRIPT_INDICATOR_ID)
     if (existing) {
+      // Vela's updateCode re-applies previous input values by key/title only,
+      // which would pin a changed default in the script text to the old value.
+      // Re-apply only values the user actually changed (differ from the OLD
+      // defaults); untouched inputs adopt the new script's defaults.
+      let userValues: Record<string, unknown> = {}
+      try {
+        const oldDefaults = new Map<string, unknown>()
+        for (const i of existing.inputs) {
+          oldDefaults.set(i.key, i.defval)
+          oldDefaults.set(i.title, i.defval)
+        }
+        for (const [k, v] of Object.entries(existing.inputValues())) {
+          const def = oldDefaults.get(k)
+          if (def !== undefined && v !== def) userValues[k] = v
+        }
+      } catch {
+        // schema read failed — fall through with no overrides
+      }
       existing.updateCode(script)
+      try {
+        const declared = new Set<string>()
+        for (const i of existing.inputs) {
+          declared.add(i.key)
+          declared.add(i.title)
+        }
+        for (const [k, v] of Object.entries(userValues)) {
+          if (declared.has(k)) existing.setInput(k, v as never)
+        }
+      } catch {
+        // chart gone mid-edit
+      }
     } else {
       chart.addIndicator(script, { id: SCRIPT_INDICATOR_ID })
     }

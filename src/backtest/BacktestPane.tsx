@@ -8,7 +8,8 @@ import { getHistory } from '../okx/history'
 import { normalizeTimeframe } from '../okx/fetch'
 import { toOkxInstId } from '../okx/provider-vela'
 import { TIMEFRAME_SECONDS } from 'pinets'
-import { setBacktest, getChartScriptTrades, useStudio } from '../studio/store'
+import { setBacktest, getChartScriptTrades, useStudio, getScriptInputs, getScriptInputValues } from '../studio/store'
+import { applyInputValues, userOverrides } from './inputValues'
 import { lastEngineMode } from '../vela/pineEngine'
 
 const fmt = (v: number | undefined, digits = 2) =>
@@ -154,7 +155,9 @@ export default function BacktestPane({ script }: { script: string }) {
         ticker: symbol,
         timeframe,
         limit: bars,
-        script,
+        // Standalone pinets reads inputs from script text only — merge the
+        // values changed via the input controls into the script's defaults.
+        script: applyInputValues(script, userOverrides(getScriptInputs(), getScriptInputValues())),
         fills: okxFills(symbol, feeTier, fillStyle),
       })
       setBacktest(result, 'user')

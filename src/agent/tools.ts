@@ -3,6 +3,7 @@ import type { IProvider } from 'pinets'
 import { runBacktest, runScriptContext } from '../backtest/runBacktest'
 import { okxFills, totalSlippageTicks } from '../backtest/fills'
 import { runSweep, MAX_SWEEP_COMBOS } from '../backtest/sweep'
+import { applyInputValues, userOverrides } from '../backtest/inputValues'
 import { fetchCandles } from '../okx/fetch'
 import { toOkxInstId } from '../okx/provider-vela'
 import {
@@ -266,11 +267,21 @@ async function runBacktestTool(args: Record<string, unknown>): Promise<unknown> 
   const fillStyle = args.fillStyle === 'maker' ? 'maker' : 'taker'
   const fills = okxFills(ticker, feeTier, fillStyle)
 
+  // Standalone pinets reads inputs from script text only — merge values the
+  // user changed via the input controls into the script's defaults.
+  const merged =
+    args.source != null
+      ? source
+      : applyInputValues(
+          source,
+          userOverrides(getScriptInputs(), getScriptInputValues()),
+        )
+
   const { strategy, runMs, isOos, fills: appliedFills } = await runBacktest({
     ticker,
     timeframe: tf,
     limit,
-    script: source,
+    script: merged,
     fills,
   })
   // Share the raw run with the UI so the Backtest pane shows agent results too.
